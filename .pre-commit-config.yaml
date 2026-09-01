@@ -18,3 +18,4 @@ repos:
         entry: bash -c 'for playbook in playbooks/*.yml; do ansible-playbook "$playbook" --syntax-check || exit 1; done'
         language: system
         files: ^(playbooks|roles|inventories)/.*\.ya?ml$
+        pass_filenames: false
