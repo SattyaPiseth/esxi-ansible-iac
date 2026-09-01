@@ -293,97 +293,44 @@
   until: kubespray_metallb_apply_result.rc == 0
 
 - name: Collect MetalLB investigation details
+  ansible.builtin.include_tasks: diagnostics.yml
+  vars:
+    kubespray_metallb_diagnostic_header: MetalLB investigation details
+    kubespray_metallb_diagnostic_commands:
+      - name: Services and endpoints
+        argv:
+          - get
+          - service,endpoints,endpointslices
+          - --namespace=metallb-system
+          - -o
+          - wide
+      - name: Pods
+        argv: [get, pods, --namespace=metallb-system, -o, wide]
+      - name: Pool resources
+        argv:
+          - get
+          - ipaddresspools,l2advertisements
+          - --namespace=metallb-system
+          - -o
+          - wide
+      - name: Warning events
+        argv:
+          - get
+          - events
+          - --namespace=metallb-system
+          - --field-selector=type=Warning
+          - --sort-by=.lastTimestamp
+      - name: Controller logs
+        argv:
+          - logs
+          - --namespace=metallb-system
+          - deployment/controller
+          - "--tail={{ kubespray_metallb_debug_log_tail }}"
+      - name: Speaker logs
+        argv:
+          - logs
+          - --namespace=metallb-system
+          - --selector=app=metallb,component=speaker
+          - "--tail={{ kubespray_metallb_debug_log_tail }}"
+          - --prefix=true
   when: kubespray_metallb_debug | bool
-  block:
-    - name: Read MetalLB service and endpoint state
-      ansible.builtin.command:
-        argv: >-
-          {{
-            kubespray_metallb_kubectl_argv
-            + ['get', 'service,endpoints,endpointslices',
-               '--namespace=metallb-system', '-o', 'wide']
-          }}
-      changed_when: false
-      failed_when: false
-      register: kubespray_metallb_debug_services
-
-    - name: Read MetalLB pod state
-      ansible.builtin.command:
-        argv: >-
-          {{
-            kubespray_metallb_kubectl_argv
-            + ['get', 'pods', '--namespace=metallb-system', '-o', 'wide']
-          }}
-      changed_when: false
-      failed_when: false
-      register: kubespray_metallb_debug_pods
-
-    - name: Read MetalLB pool resources
-      ansible.builtin.command:
-        argv: >-
-          {{
-            kubespray_metallb_kubectl_argv
-            + ['get', 'ipaddresspools,l2advertisements',
-               '--namespace=metallb-system', '-o', 'wide']
-          }}
-      changed_when: false
-      failed_when: false
-      register: kubespray_metallb_debug_pools
-
-    - name: Read recent MetalLB warning events
-      ansible.builtin.command:
-        argv: >-
-          {{
-            kubespray_metallb_kubectl_argv
-            + ['get', 'events', '--namespace=metallb-system',
-               '--field-selector=type=Warning', '--sort-by=.lastTimestamp']
-          }}
-      changed_when: false
-      failed_when: false
-      register: kubespray_metallb_debug_events
-
-    - name: Read MetalLB controller logs
-      ansible.builtin.command:
-        argv: >-
-          {{
-            kubespray_metallb_kubectl_argv
-            + ['logs', '--namespace=metallb-system',
-               'deployment/controller', '--tail=' ~ kubespray_metallb_debug_log_tail]
-          }}
-      changed_when: false
-      failed_when: false
-      register: kubespray_metallb_debug_controller_logs
-
-    - name: Read MetalLB speaker logs
-      ansible.builtin.command:
-        argv: >-
-          {{
-            kubespray_metallb_kubectl_argv
-            + ['logs', '--namespace=metallb-system',
-               '--selector=app=metallb,component=speaker',
-               '--tail=' ~ kubespray_metallb_debug_log_tail, '--prefix=true']
-          }}
-      changed_when: false
-      failed_when: false
-      register: kubespray_metallb_debug_speaker_logs
-
-    - name: Show MetalLB investigation details
-      ansible.builtin.debug:
-        msg: |-
-          MetalLB service and endpoints:
-          {{ kubespray_metallb_debug_services.stdout | default('') }}
-
-          MetalLB pods:
-          {{ kubespray_metallb_debug_pods.stdout | default('') }}
-
-          MetalLB pools:
-          {{ kubespray_metallb_debug_pools.stdout | default('') }}
-
-          MetalLB warning events:
-          {{ kubespray_metallb_debug_events.stdout | default('') }}
-
-          MetalLB controller logs:
-          {{ kubespray_metallb_debug_controller_logs.stdout | default('') }}
-
-          MetalLB speaker logs:
-          {{ kubespray_metallb_debug_speaker_logs.stdout | default('') }}

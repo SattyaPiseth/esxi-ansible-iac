@@ -1,0 +1,33 @@
+---
+- name: Run MetalLB diagnostic commands
+  ansible.builtin.command:
+    argv: "{{ kubespray_metallb_kubectl_argv + item.argv }}"
+  changed_when: false
+  failed_when: false
+  loop: "{{ kubespray_metallb_diagnostic_commands }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: kubespray_metallb_diagnostic_results
+
+- name: Format MetalLB diagnostic results
+  ansible.builtin.set_fact:
+    kubespray_metallb_diagnostic_report: |-
+      {{ kubespray_metallb_diagnostic_header }}
+      {% for result in kubespray_metallb_diagnostic_results.results %}
+
+      {{ result.item.name }}:
+      {% if result.rc == 0 %}
+      {{ result.stdout | default('') }}
+      {% else %}
+      {{ result.stderr | default('command failed with rc=' ~ result.rc) }}
+      {% endif %}
+      {% endfor %}
+
+- name: Show MetalLB diagnostic results
+  ansible.builtin.debug:
+    msg: "{{ kubespray_metallb_diagnostic_report }}"
+  when: not (kubespray_metallb_diagnostic_fail | default(false) | bool)
+
+- name: Fail with MetalLB diagnostic results
+  ansible.builtin.fail:
+    msg: "{{ kubespray_metallb_diagnostic_report }}"
