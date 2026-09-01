@@ -62,6 +62,8 @@
   ansible.builtin.assert:
     that:
       - guest_base_nic_offload_interface | string | length > 0
+      - guest_base_nic_offload_script_path is match('^/[^[:space:]]+$')
+      - guest_base_nic_offload_interface_wait_seconds | int > 0
       - guest_base_nic_offload_features is sequence
       - guest_base_nic_offload_features is not string
       - >-

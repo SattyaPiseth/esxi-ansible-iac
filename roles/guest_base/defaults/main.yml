@@ -36,6 +36,8 @@ guest_base_authorized_keys: []
 
 guest_base_enable_nic_offloads_disabled: false
 guest_base_nic_offload_interface: "{{ ansible_facts.default_ipv4.interface | default('ens33') }}"
+guest_base_nic_offload_script_path: /usr/local/sbin/apply-kubernetes-nic-offloads
+guest_base_nic_offload_interface_wait_seconds: 60
 guest_base_nic_offload_features:
   - "gro off"
   - "lro off"

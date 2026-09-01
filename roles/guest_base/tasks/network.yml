@@ -1,4 +1,32 @@
 ---
+- name: Install guest NIC offload helper
+  ansible.builtin.copy:
+    dest: "{{ guest_base_nic_offload_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+
+      interface="$1"
+      shift
+      attempt=0
+
+      while [ ! -e "/sys/class/net/${interface}" ]; do
+        attempt=$((attempt + 1))
+        if [ "${attempt}" -ge {{ guest_base_nic_offload_interface_wait_seconds }} ]; then
+          echo "Interface ${interface} did not appear within {{ guest_base_nic_offload_interface_wait_seconds }} seconds" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+
+      exec /usr/sbin/ethtool -K "${interface}" "$@"
+  become: true
+  notify: Restart guest NIC offload service
+  when: guest_base_enable_nic_offloads_disabled | bool
+
 - name: Persist guest NIC offload settings
   ansible.builtin.copy:
     dest: /etc/systemd/system/guest-nic-offloads.service
@@ -9,14 +37,14 @@
       [Unit]
       Description=Apply guest NIC offload settings for Kubernetes overlay networking
       Wants=network-online.target
-      After=network-online.target
+      After=network-online.target sys-subsystem-net-devices-{{ guest_base_nic_offload_interface }}.device
       Before=kubelet.service
 
       [Service]
       Type=oneshot
       RemainAfterExit=yes
-      ExecStartPre=/bin/sh -c 'for attempt in $(seq 1 60); do [ -e /sys/class/net/{{ guest_base_nic_offload_interface }} ] && exit 0; sleep 1; done; echo "Interface {{ guest_base_nic_offload_interface }} did not appear within 60 seconds" >&2; exit 1'
-      ExecStart=/usr/sbin/ethtool -K {{ guest_base_nic_offload_interface }} {{ guest_base_nic_offload_features | join(" ") }}
+      ExecStart={{ guest_base_nic_offload_script_path }} {{ guest_base_nic_offload_interface }} \
+        {{ guest_base_nic_offload_features | join(" ") }}
 
       [Install]
       WantedBy=multi-user.target kubelet.service
