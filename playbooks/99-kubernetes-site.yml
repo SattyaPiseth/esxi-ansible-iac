@@ -1,0 +1,18 @@
+---
+- name: Prepare control node
+  ansible.builtin.import_playbook: 00-control-node.yml
+
+- name: Power on Kubernetes VMs
+  ansible.builtin.import_playbook: 04-vm-power.yml
+  vars:
+    scope: all
+    vm_power_state: powered-on
+
+- name: Prepare Kubernetes guests
+  ansible.builtin.import_playbook: 99-guest-site.yml
+
+- name: Prepare Kubernetes nodes
+  ansible.builtin.import_playbook: 10-kubernetes-node-prepare.yml
+
+- name: Deploy Kubernetes with Kubespray
+  ansible.builtin.import_playbook: 09-kubespray-deploy.yml

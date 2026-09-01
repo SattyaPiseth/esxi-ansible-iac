@@ -1,0 +1,14 @@
+---
+- name: Validate required ESXi variables
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item, default='') | string | length > 0
+    fail_msg: "Required variable {{ item }} is missing or empty"
+    success_msg: "Variable {{ item }} is defined and has a value"
+  loop: "{{ esxi_validate_required_vars }}"
+
+- name: Validate certificate setting is boolean
+  ansible.builtin.assert:
+    that:
+      - esxi_validate_certs is boolean
+    fail_msg: "esxi_validate_certs must be true or false."

@@ -1,0 +1,37 @@
+---
+- name: Render Kubespray inventory for MetalLB
+  hosts: vm_esxi_8.0
+  gather_facts: false
+
+  roles:
+    - kubespray_inventory
+
+- name: Install Kubespray MetalLB addon
+  hosts: control_node
+  gather_facts: true
+  become: false
+  vars:
+    kubespray_control_enable_cluster_deploy: true
+    kubespray_control_enable_cluster_playbook_run: true
+    kubespray_control_cluster_playbook_tags:
+      - metallb
+    kubespray_control_enable_deploy_output_hidden: false
+
+  roles:
+    - kubespray_control
+
+- name: Verify cluster addon readiness before MetalLB pools
+  hosts: control_node
+  gather_facts: false
+  vars:
+    kubernetes_health_validate_metallb_address_pools: false
+
+  roles:
+    - kubernetes_health
+
+- name: Apply MetalLB address pools after webhook readiness
+  hosts: control_node
+  gather_facts: false
+
+  roles:
+    - kubespray_metallb

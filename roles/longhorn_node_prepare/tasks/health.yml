@@ -1,0 +1,62 @@
+- name: Read NFSv4 kernel configuration
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -E
+      - ^CONFIG_NFS_V4(_1|_2)?=(y|m)$
+      - "/boot/config-{{ ansible_facts['kernel'] }}"
+  changed_when: false
+  failed_when: false
+  register: longhorn_node_prepare_nfs_kernel_config
+
+- name: Validate NFSv4 kernel support
+  ansible.builtin.assert:
+    that:
+      - "'CONFIG_NFS_V4=' in longhorn_node_prepare_nfs_kernel_config.stdout"
+      - "'CONFIG_NFS_V4_1=' in longhorn_node_prepare_nfs_kernel_config.stdout"
+    fail_msg: "Longhorn RWX and NFS backups require NFSv4.1 or newer kernel support."
+
+- name: Validate Longhorn command prerequisites
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -ec
+      - command -v "$1" >/dev/null
+      - longhorn-command-check
+      - "{{ item }}"
+  loop: "{{ longhorn_node_prepare_required_commands }}"
+  changed_when: false
+
+- name: Read kubelet mount propagation
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --target
+      - /var/lib/kubelet
+      - --noheadings
+      - --output
+      - PROPAGATION
+  changed_when: false
+  register: longhorn_node_prepare_mount_propagation
+
+- name: Validate kubelet mount propagation
+  ansible.builtin.assert:
+    that:
+      - "'shared' in longhorn_node_prepare_mount_propagation.stdout"
+    fail_msg: >-
+      Longhorn requires shared mount propagation for the kubelet mount tree.
+
+- name: Check iSCSI daemon state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - iscsid.service
+  changed_when: false
+  register: longhorn_node_prepare_iscsid_state
+
+- name: Validate iSCSI daemon state
+  ansible.builtin.assert:
+    that:
+      - longhorn_node_prepare_iscsid_state.stdout == 'active'
+    fail_msg: "Longhorn V1 requires iscsid.service to be active."

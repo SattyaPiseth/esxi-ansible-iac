@@ -1,0 +1,5 @@
+---
+# Copy this file to ssh_keys.yml when you want to manage SSH keys from inventory.
+# Public keys are not secrets, but keep private keys outside the repository.
+guest_additional_authorized_keys:
+  - "ssh-ed25519 AAAA_REPLACE_WITH_OPERATOR_PUBLIC_KEY operator@example"

@@ -1,0 +1,20 @@
+---
+- name: List VMs on ESXi
+  hosts: vmware_esxi
+  gather_facts: false
+
+  tasks:
+    - name: Get VM information
+      community.vmware.vmware_vm_info:
+        hostname: "{{ esxi_hostname }}"
+        username: "{{ esxi_username }}"
+        password: "{{ esxi_password }}"
+        validate_certs: "{{ esxi_validate_certs }}"
+      no_log: true
+      register: vm_info
+
+    - name: Show VM list
+      ansible.builtin.debug:
+        msg:
+          esxi_host: "{{ esxi_hostname }}"
+          virtual_machines: "{{ vm_info.virtual_machines | map(attribute='guest_name') | list }}"

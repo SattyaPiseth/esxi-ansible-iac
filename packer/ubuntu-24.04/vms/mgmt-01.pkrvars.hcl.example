@@ -1,0 +1,5 @@
+vm_name = "ubuntu_24.04-mgmt-01"
+guest_hostname = "ubuntu-24-04-mgmt-01"
+vm_cpu = 4
+vm_memory_mb = 4096
+vm_disk_mb = 51200

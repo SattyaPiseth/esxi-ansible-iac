@@ -1,0 +1,140 @@
+---
+- name: Reconcile Metrics APIService aggregation TLS setting
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_artifacts_dir }}/kubectl"
+      - --kubeconfig
+      - "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      - patch
+      - apiservice
+      - v1beta1.metrics.k8s.io
+      - --type=merge
+      - -p
+      - >-
+        {{
+          {
+            'spec': {
+              'insecureSkipTLSVerify':
+                kubespray_control_enable_metrics_server_apiservice_insecure_skip_tls_verify | bool
+            }
+          } | to_json
+        }}
+  register: kubespray_control_metrics_apiservice_patch
+  changed_when: >-
+    'no change' not in kubespray_control_metrics_apiservice_patch.stdout
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_metrics_server | bool
+
+- name: Read Metrics Server deployment before probe reconciliation
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_artifacts_dir }}/kubectl"
+      - --kubeconfig
+      - "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      - --namespace=kube-system
+      - get
+      - deployment
+      - metrics-server
+      - -o
+      - json
+  changed_when: false
+  failed_when: false
+  register: kubespray_control_metrics_server_deployment
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_metrics_server | bool
+    - kubespray_control_enable_metrics_server_deployment_reconcile | bool
+
+- name: Validate Metrics Server deployment exists before probe reconciliation
+  ansible.builtin.assert:
+    that:
+      - kubespray_control_metrics_server_deployment.rc == 0
+    fail_msg: >-
+      Metrics Server is enabled, but deployment/metrics-server was not found in
+      kube-system after the Kubespray run.
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_metrics_server | bool
+    - kubespray_control_enable_metrics_server_deployment_reconcile | bool
+
+- name: Select Metrics Server container before probe reconciliation
+  vars:
+    kubespray_control_metrics_server_containers: >-
+      {{
+        ((kubespray_control_metrics_server_deployment.stdout | from_json).spec.template.spec.containers)
+        | selectattr('name', 'equalto', 'metrics-server')
+        | list
+      }}
+  ansible.builtin.set_fact:
+    kubespray_control_metrics_server_container: >-
+      {{ kubespray_control_metrics_server_containers | first }}
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_metrics_server | bool
+    - kubespray_control_enable_metrics_server_deployment_reconcile | bool
+    - kubespray_control_metrics_server_containers | length > 0
+
+- name: Validate Metrics Server container exists before probe reconciliation
+  ansible.builtin.assert:
+    that:
+      - kubespray_control_metrics_server_container is defined
+    fail_msg: >-
+      deployment/metrics-server exists, but the metrics-server container was
+      not found.
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_metrics_server | bool
+    - kubespray_control_enable_metrics_server_deployment_reconcile | bool
+
+- name: Reconcile Metrics Server probe timeout
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_artifacts_dir }}/kubectl"
+      - --kubeconfig
+      - "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      - --namespace=kube-system
+      - patch
+      - deployment
+      - metrics-server
+      - --type=strategic
+      - -p
+      - >-
+        {{
+          {
+            'spec': {
+              'template': {
+                'spec': {
+                  'containers': [
+                    {
+                      'name': 'metrics-server',
+                      'livenessProbe': {
+                        'timeoutSeconds': kubespray_control_metrics_server_probe_timeout_seconds | int
+                      },
+                      'readinessProbe': {
+                        'timeoutSeconds': kubespray_control_metrics_server_probe_timeout_seconds | int
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          } | to_json
+        }}
+  register: kubespray_control_metrics_server_patch
+  changed_when: true
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_metrics_server | bool
+    - kubespray_control_enable_metrics_server_deployment_reconcile | bool
+    - >-
+      kubespray_control_metrics_server_container.livenessProbe.timeoutSeconds
+      | default(0) | int != kubespray_control_metrics_server_probe_timeout_seconds | int
+      or kubespray_control_metrics_server_container.readinessProbe.timeoutSeconds
+      | default(0) | int != kubespray_control_metrics_server_probe_timeout_seconds | int

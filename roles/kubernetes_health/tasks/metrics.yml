@@ -1,0 +1,121 @@
+- name: Read Metrics APIService
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - apiservice
+      - v1beta1.metrics.k8s.io
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_metrics_api
+  when: kubernetes_health_metrics_server_enabled | bool
+
+- name: Validate Metrics APIService availability
+  vars:
+    kubernetes_health_metrics_api_conditions: >-
+      {{
+        (kubernetes_health_metrics_api.stdout | from_json).status.conditions | default([])
+      }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((kubernetes_health_metrics_api.stdout | from_json).spec.insecureSkipTLSVerify
+          | default(false) | bool)
+        == (kubernetes_health_metrics_server_apiservice_insecure_skip_tls_verify | bool)
+      - >-
+        kubernetes_health_metrics_api_conditions
+        | selectattr('type', 'equalto', 'Available')
+        | selectattr('status', 'equalto', 'True')
+        | list | length > 0
+    fail_msg: >-
+      Metrics APIService aggregation TLS is misconfigured or metrics.k8s.io is
+      not Available. Reconcile the Metrics Server addon before continuing.
+  when: kubernetes_health_metrics_server_enabled | bool
+
+- name: Read Metrics Server deployment
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - deployment
+      - metrics-server
+      - --namespace=kube-system
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_metrics_server_deployment
+  when: kubernetes_health_metrics_server_enabled | bool
+
+- name: Validate Metrics Server resources and probes
+  vars:
+    kubernetes_health_metrics_server_container: >-
+      {{
+        (kubernetes_health_metrics_server_deployment.stdout | from_json).spec.template.spec.containers
+        | selectattr('name', 'equalto', 'metrics-server')
+        | first
+      }}
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_metrics_server_container.resources.requests.cpu is defined
+      - kubernetes_health_metrics_server_container.resources.requests.memory is defined
+      - kubernetes_health_metrics_server_container.resources.limits.cpu is defined
+      - kubernetes_health_metrics_server_container.resources.limits.memory is defined
+      - >-
+        kubernetes_health_metrics_server_requests_cpu | length == 0
+        or kubernetes_health_metrics_server_container.resources.requests.cpu
+        == kubernetes_health_metrics_server_requests_cpu
+      - >-
+        kubernetes_health_metrics_server_requests_memory | length == 0
+        or kubernetes_health_metrics_server_container.resources.requests.memory
+        == kubernetes_health_metrics_server_requests_memory
+      - >-
+        kubernetes_health_metrics_server_limits_cpu | length == 0
+        or kubernetes_health_metrics_server_container.resources.limits.cpu
+        == kubernetes_health_metrics_server_limits_cpu
+      - >-
+        kubernetes_health_metrics_server_limits_memory | length == 0
+        or kubernetes_health_metrics_server_container.resources.limits.memory
+        == kubernetes_health_metrics_server_limits_memory
+      - >-
+        kubernetes_health_metrics_server_container.livenessProbe.timeoutSeconds | int
+        == kubernetes_health_metrics_server_probe_timeout_seconds | int
+      - >-
+        kubernetes_health_metrics_server_container.readinessProbe.timeoutSeconds | int
+        == kubernetes_health_metrics_server_probe_timeout_seconds | int
+    fail_msg: >-
+      Metrics Server resources or probe timeout do not match the production
+      baseline. Re-run the Kubespray deployment wrapper to reconcile them.
+  when: kubernetes_health_metrics_server_enabled | bool
+
+- name: Wait for Metrics API data from every node
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - --raw
+      - /apis/metrics.k8s.io/v1beta1/nodes
+  changed_when: false
+  failed_when: false
+  register: kubernetes_health_node_metrics
+  retries: 12
+  delay: 5
+  until: >-
+    kubernetes_health_node_metrics.rc == 0
+    and (
+      (kubernetes_health_node_metrics.stdout
+       | default('{"items": []}', true)
+       | from_json)['items']
+      | length
+    ) == (
+      (kubespray_inventory_control_plane_vm_names + kubespray_inventory_worker_vm_names)
+      | unique
+      | length
+    )
+  when: kubernetes_health_metrics_server_enabled | bool

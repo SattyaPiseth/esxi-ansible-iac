@@ -1,0 +1,85 @@
+- name: Read Kubernetes warning events
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - events
+      - --all-namespaces
+      - --field-selector=type=Warning
+      - --sort-by=.metadata.creationTimestamp
+  changed_when: false
+  register: kubernetes_health_warning_events
+
+- name: Read active Kubernetes warning events
+  ansible.builtin.shell: |
+    set -euo pipefail
+    "{{ kubernetes_health_kubectl }}" --kubeconfig "{{ kubernetes_health_kubeconfig }}" \
+      get events --all-namespaces --field-selector=type=Warning \
+      --sort-by=.metadata.creationTimestamp |
+    awk -v window_minutes="{{ kubernetes_health_warning_event_active_window_minutes }}" \
+        -v exclude="{{ kubernetes_health_warning_event_exclude_regex }}" '
+      function age_seconds(age, m, s) {
+        if (age ~ /[0-9]+d/ || age ~ /[0-9]+h/) {
+          return 999999999
+        }
+        if (age !~ /[0-9]+m/ && age !~ /[0-9]+s/) {
+          return 999999999
+        }
+        s = 0
+        if (match(age, /[0-9]+m/)) {
+          m = substr(age, RSTART, RLENGTH - 1)
+          s += m * 60
+        }
+        if (match(age, /[0-9]+s/)) {
+          m = substr(age, RSTART, RLENGTH - 1)
+          s += m
+        }
+        return s
+      }
+      NR == 1 { next }
+      {
+        line = $0
+        if (exclude != "" && line ~ exclude) {
+          next
+        }
+        if (age_seconds($2) <= window_minutes * 60) {
+          print line
+        }
+      }'
+  args:
+    executable: /bin/bash
+  changed_when: false
+  register: kubernetes_health_active_warning_events
+
+- name: Show Kubernetes warning events
+  when: kubernetes_health_enable_warning_event_output | bool
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        'No Kubernetes warning events found.'
+        if kubernetes_health_warning_events.stdout_lines | length <= 1
+        else kubernetes_health_warning_events.stdout_lines[1:] | join('\n')
+      }}
+
+- name: Show active Kubernetes warning events
+  when: kubernetes_health_enable_warning_event_output | bool
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        'No active Kubernetes warning events found in the last '
+        ~ kubernetes_health_warning_event_active_window_minutes
+        ~ ' minutes.'
+        if kubernetes_health_active_warning_events.stdout_lines | length == 0
+        else kubernetes_health_active_warning_events.stdout_lines | join('\n')
+      }}
+
+- name: Validate Kubernetes warning event threshold
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_active_warning_events.stdout_lines | length == 0
+    fail_msg: >-
+      Active Kubernetes warning events are present. Review the active warning
+      list before declaring the cluster production-ready.
+  when: kubernetes_health_enable_warning_event_failure | bool

@@ -1,0 +1,14 @@
+---
+- name: Render Kubespray inventory
+  ansible.builtin.import_playbook: 07-kubespray-inventory.yml
+
+- name: Install Kubespray and deploy Kubernetes
+  hosts: control_node
+  gather_facts: true
+  vars:
+    kubespray_control_enable_cluster_playbook_run: true
+
+  roles:
+    - kubespray_control
+    - role: control_plane_kubeconfig
+      when: kubespray_control_enable_cluster_deploy | default(false) | bool

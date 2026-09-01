@@ -1,0 +1,33 @@
+---
+- name: Validate Kubernetes client artifacts
+  ansible.builtin.import_tasks: artifacts.yml
+
+- name: Validate Kubernetes API readiness
+  ansible.builtin.import_tasks: api.yml
+
+- name: Validate Kubernetes nodes
+  ansible.builtin.import_tasks: nodes.yml
+
+- name: Validate Kubernetes system components
+  ansible.builtin.import_tasks: system.yml
+
+- name: Validate kube-vip
+  ansible.builtin.import_tasks: kube_vip.yml
+
+- name: Validate Kubernetes node network
+  ansible.builtin.import_tasks: network.yml
+
+- name: Validate Metrics Server
+  ansible.builtin.import_tasks: metrics.yml
+
+- name: Validate cert-manager
+  ansible.builtin.import_tasks: cert_manager.yml
+
+- name: Validate NodeLocalDNS
+  ansible.builtin.import_tasks: dns.yml
+
+- name: Validate MetalLB
+  ansible.builtin.import_tasks: metallb.yml
+
+- name: Validate Kubernetes events
+  ansible.builtin.import_tasks: events.yml

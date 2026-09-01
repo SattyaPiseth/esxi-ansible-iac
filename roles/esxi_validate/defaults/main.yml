@@ -1,0 +1,5 @@
+---
+esxi_validate_required_vars:
+  - esxi_hostname
+  - esxi_username
+  - esxi_password

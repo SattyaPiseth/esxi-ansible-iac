@@ -1,0 +1,12 @@
+---
+- name: Render Kubespray inventory
+  ansible.builtin.import_playbook: 07-kubespray-inventory.yml
+
+- name: Reset Kubernetes with Kubespray
+  hosts: control_node
+  gather_facts: true
+  vars:
+    kubespray_control_enable_reset_playbook_run: true
+
+  roles:
+    - kubespray_control

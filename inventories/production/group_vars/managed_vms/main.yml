@@ -1,0 +1,46 @@
+---
+ansible_user: sysadmin
+ansible_become: true
+ansible_become_method: sudo
+ansible_ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/esxi_ansible_ed25519"
+ansible_ssh_common_args: "-o IdentitiesOnly=yes"
+guest_become_ready: >-
+  {{
+    (ansible_become_password | default('', true) | string | length > 0)
+    or (guest_passwordless_sudo | default(false) | bool)
+  }}
+guest_authorized_key_file: "{{ ansible_ssh_private_key_file }}.pub"
+guest_additional_authorized_keys: []
+guest_base_authorized_keys: >-
+  {{ [lookup('ansible.builtin.file', guest_authorized_key_file)]
+     + guest_additional_authorized_keys }}
+guest_base_operator_packages:
+  - fish
+  - tree
+  - yq
+guest_base_operator_apt_packages_absent:
+  - tldr
+  - tldr-hs
+guest_base_operator_snap_packages:
+  - tldr
+guest_base_operator_repositories:
+  - name: fastfetch
+    uris:
+      - https://ppa.launchpadcontent.net/zhangsongcui3371/fastfetch/ubuntu
+    suites:
+      - "{{ ansible_distribution_release }}"
+    components:
+      - main
+    signed_by: EB65EE19D802F3EB1A13CFE47E2E5CB4D4865F21
+    legacy_source_files:
+      - "/etc/apt/sources.list.d/ppa_zhangsongcui3371_fastfetch_{{ ansible_distribution_release }}.list"
+    packages:
+      - fastfetch
+
+guest_network_prefix: 24
+guest_network_gateway: 172.16.6.1
+guest_network_nameservers:
+  - 172.16.1.2
+guest_network_search_domains:
+  - "tss.local"
+guest_network_dns_test_name: "dns.tss.local"

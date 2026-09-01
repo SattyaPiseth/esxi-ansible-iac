@@ -1,0 +1,92 @@
+---
+- name: Validate guest operator package lists
+  ansible.builtin.assert:
+    that:
+      - item.packages is sequence
+      - item.packages is not string
+      - >-
+        item.packages
+        | select('string')
+        | reject('equalto', '')
+        | list
+        | length == item.packages | length
+    fail_msg: "{{ item.name }} must contain non-empty package names."
+  loop:
+    - name: guest_base_operator_packages
+      packages: "{{ guest_base_operator_packages }}"
+    - name: guest_base_operator_apt_packages_absent
+      packages: "{{ guest_base_operator_apt_packages_absent }}"
+    - name: guest_base_operator_snap_packages
+      packages: "{{ guest_base_operator_snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate guest operator repositories
+  ansible.builtin.assert:
+    that:
+      - guest_base_operator_repositories is sequence
+      - guest_base_operator_repositories is not string
+      - >-
+        guest_base_operator_repositories
+        | map(attribute='name')
+        | list
+        | select('string')
+        | reject('equalto', '')
+        | list
+        | length == guest_base_operator_repositories | length
+      - >-
+        guest_base_operator_repositories
+        | map(attribute='uris')
+        | list
+        | length == guest_base_operator_repositories | length
+      - >-
+        guest_base_operator_repositories
+        | map(attribute='suites')
+        | list
+        | length == guest_base_operator_repositories | length
+      - >-
+        guest_base_operator_repositories
+        | map(attribute='components')
+        | list
+        | length == guest_base_operator_repositories | length
+      - >-
+        guest_base_operator_repositories
+        | map(attribute='packages')
+        | list
+        | length == guest_base_operator_repositories | length
+    fail_msg: >-
+      guest_base_operator_repositories must define name, uris, suites,
+      components, and packages for each source.
+
+- name: Validate guest NIC offload settings
+  ansible.builtin.assert:
+    that:
+      - guest_base_nic_offload_interface | string | length > 0
+      - guest_base_nic_offload_features is sequence
+      - guest_base_nic_offload_features is not string
+      - >-
+        guest_base_nic_offload_features
+        | select('string')
+        | reject('equalto', '')
+        | list
+        | length == guest_base_nic_offload_features | length
+    fail_msg: "guest_base_nic_offload_features must contain non-empty ethtool feature settings."
+  when: guest_base_enable_nic_offloads_disabled | bool
+
+- name: Validate guest SSH authorized keys
+  ansible.builtin.assert:
+    that:
+      - guest_base_authorized_keys is sequence
+      - guest_base_authorized_keys is not string
+      - guest_base_authorized_keys | reject('string') | list | length == 0
+      - guest_base_authorized_keys | map('trim') | reject('equalto', '') | list | length == guest_base_authorized_keys | length
+    fail_msg: "guest_base_authorized_keys must contain non-empty SSH public key strings."
+
+- name: Validate SSH password disable safety
+  ansible.builtin.assert:
+    that:
+      - guest_base_authorized_keys | length > 0
+    fail_msg: >-
+      Password SSH disablement blocked. Configure at least one managed
+      guest_base_authorized_keys entry before disabling password authentication.
+  when: guest_base_enable_password_ssh_disabled | bool

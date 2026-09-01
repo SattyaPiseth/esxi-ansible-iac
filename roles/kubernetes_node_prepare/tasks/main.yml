@@ -1,0 +1,27 @@
+---
+- name: Configure Kubernetes sysctl settings
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward = 1
+  become: true
+  register: kubernetes_node_prepare_sysctl_config
+  notify: Apply Kubernetes sysctl settings
+
+- name: Flush Kubernetes sysctl handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Read effective IPv4 forwarding value
+  ansible.builtin.command:
+    cmd: cat /proc/sys/net/ipv4/ip_forward
+  changed_when: false
+  register: kubernetes_node_prepare_node_ip_forward
+
+- name: Validate IPv4 forwarding is enabled
+  ansible.builtin.assert:
+    that:
+      - kubernetes_node_prepare_node_ip_forward.stdout == "1"
+    fail_msg: "Kubespray requires IPv4 forwarding on target servers."

@@ -1,0 +1,25 @@
+---
+# Longhorn v1.12.0 production defaults for the V1 data engine.
+global:
+  nodeSelector:
+    node-role.kubernetes.io/storage: "true"
+
+defaultSettings:
+  createDefaultDiskLabeledNodes: "true"
+  defaultDataPath: "/var/lib/longhorn"
+  defaultReplicaCount: "3"
+  replicaSoftAntiAffinity: "false"
+  allowVolumeCreationWithDegradedAvailability: "false"
+  defaultDataLocality: "best-effort"
+  storageOverProvisioningPercentage: "100"
+  storageMinimalAvailablePercentage: "25"
+  systemManagedComponentsNodeSelector: "node-role.kubernetes.io/storage:true"
+  v1DataEngine: "true"
+  v2DataEngine: "false"
+
+persistence:
+  defaultClass: true
+  defaultClassReplicaCount: 3
+  defaultDataLocality: best-effort
+  defaultFsType: ext4
+  reclaimPolicy: Retain

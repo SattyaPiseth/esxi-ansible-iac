@@ -1,0 +1,27 @@
+esxi_hostname = "esxi6-01-lab.tss.local"
+esxi_username = "root"
+esxi_password = "REPLACE_WITH_ESXI_PASSWORD"
+
+# Lab mode only. Set false after trusting the ESXi host certificate or CA.
+esxi_insecure_connection = true
+
+# ESXi datastore paths are case-sensitive; this host stores the Ubuntu ISO at:
+# [RAID1-OS] ISO/ubuntu-24.04.4-live-server-amd64.iso
+# esxi_datastore = "RAID5-DATA"
+esxi_iso_datastore = "RAID1-OS"
+esxi_iso_directory = "ISO"
+
+# Keep EFI on this ESXi 6.7 host. BIOS fell through to PXE with this ISO.
+vm_firmware = "efi"
+
+# ESXi 6.7 can expose the EFI console later than newer ESXi hosts, but waiting
+# too long lets Ubuntu leave GRUB and reach the interactive language screen.
+boot_wait = "36s"
+
+# Older standalone ESXi consoles may drop fast key groups during boot editing.
+boot_keygroup_interval = "1000ms"
+
+# Keep only values that differ from the defaults in ubuntu-24.04.pkr.hcl.
+# Use PKR_VAR_* environment variables for secrets if you do not want them in a file.
+ssh_password = "REPLACE_WITH_TEMPORARY_PASSWORD"
+ssh_password_hash = "$6$REPLACE_WITH_SHA512_HASH"

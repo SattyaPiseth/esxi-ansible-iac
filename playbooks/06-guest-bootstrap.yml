@@ -1,0 +1,8 @@
+---
+- name: Bootstrap Linux guest VMs
+  hosts: managed_vms
+  gather_facts: true
+  become: true
+
+  roles:
+    - guest_base

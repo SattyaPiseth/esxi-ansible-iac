@@ -1,0 +1,8 @@
+---
+- name: Check ESXi facts
+  hosts: vmware_esxi
+  gather_facts: false
+
+  roles:
+    - esxi_validate
+    - esxi_facts

@@ -1,0 +1,94 @@
+---
+- name: Power VM and discover current guest IP
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  vars:
+    discovered_guest_group: discovered_linux_vms
+  roles:
+    - esxi_validate
+    - vm_power
+  tasks:
+    - name: Validate guest credential source
+      ansible.builtin.assert:
+        that:
+          - guest_credential_source is defined
+          - guest_credential_source in hostvars
+          - hostvars[guest_credential_source].ansible_user is defined
+          - hostvars[guest_credential_source].ansible_password is defined or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
+          - hostvars[guest_credential_source].guest_become_ready | bool
+        fail_msg: "guest_credential_source must reference an inventory host with complete guest SSH and become credentials."
+
+    - name: Wait for VMware Tools to report VM IP
+      community.vmware.vmware_vm_info:
+        hostname: "{{ esxi_hostname }}"
+        username: "{{ esxi_username }}"
+        password: "{{ esxi_password }}"
+        validate_certs: "{{ esxi_validate_certs }}"
+      no_log: true
+      register: discovered_vm_info
+      until:
+        - >-
+          discovered_vm_info.virtual_machines
+          | selectattr('guest_name', 'equalto', vm_name)
+          | list
+          | length == 1
+        - >-
+          discovered_vm_info.virtual_machines
+          | selectattr('guest_name', 'equalto', vm_name)
+          | map(attribute='ip_address')
+          | select('defined')
+          | reject('equalto', '')
+          | list
+          | length > 0
+      retries: 60
+      delay: 10
+
+    - name: Set discovered guest IP
+      ansible.builtin.set_fact:
+        discovered_guest_ip: >-
+          {{
+            discovered_vm_info.virtual_machines
+            | selectattr('guest_name', 'equalto', vm_name)
+            | map(attribute='ip_address')
+            | select('defined')
+            | reject('equalto', '')
+            | list
+            | first
+          }}
+
+    - name: Add discovered guest to in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ vm_name }}"
+        groups: "{{ discovered_guest_group }}"
+        ansible_host: "{{ discovered_guest_ip }}"
+        ansible_user: "{{ hostvars[guest_credential_source].ansible_user }}"
+        ansible_password: "{{ hostvars[guest_credential_source].ansible_password | default(omit) }}"
+        ansible_ssh_private_key_file: "{{ hostvars[guest_credential_source].ansible_ssh_private_key_file | default(omit) }}"
+        ansible_become: "{{ hostvars[guest_credential_source].ansible_become | default(true) }}"
+        ansible_become_method: "{{ hostvars[guest_credential_source].ansible_become_method | default('sudo') }}"
+        ansible_become_password: "{{ hostvars[guest_credential_source].ansible_become_password | default(omit) }}"
+        ansible_python_interpreter: "{{ hostvars[guest_credential_source].ansible_python_interpreter | default('/usr/bin/python3') }}"
+      changed_when: false
+
+    - name: Show discovered guest endpoint
+      ansible.builtin.debug:
+        msg: "VM '{{ vm_name }}' current guest IP is {{ discovered_guest_ip }}"
+
+- name: Prepare SSH known_hosts for discovered guest
+  hosts: discovered_linux_vms
+  gather_facts: false
+  roles:
+    - ssh_known_hosts
+
+- name: Wait for discovered guest SSH
+  hosts: discovered_linux_vms
+  gather_facts: false
+  roles:
+    - vm_wait
+
+- name: Bootstrap discovered Linux guest
+  hosts: discovered_linux_vms
+  gather_facts: true
+  become: true
+  roles:
+    - guest_base

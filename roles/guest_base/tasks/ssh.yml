@@ -1,0 +1,51 @@
+---
+- name: Install guest SSH authorized keys
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ guest_base_authorized_keys | join('\n') }}"
+    state: present
+    manage_dir: true
+    exclusive: false
+  become: true
+  when: guest_base_authorized_keys | length > 0
+
+- name: Remove legacy SSH hardening drop-in
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/60-ansible-hardening.conf
+    state: absent
+  become: true
+  notify: Reload ssh
+  when: guest_base_enable_password_ssh_disabled | bool
+
+- name: Disable SSH password authentication
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/01-ansible-hardening.conf
+    mode: "0644"
+    owner: root
+    group: root
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+  become: true
+  notify: Reload ssh
+  when: guest_base_enable_password_ssh_disabled | bool
+
+- name: Flush SSH reload before validating effective configuration
+  ansible.builtin.meta: flush_handlers
+  when: guest_base_enable_password_ssh_disabled | bool
+
+- name: Read effective sshd authentication settings
+  ansible.builtin.command:
+    cmd: sshd -T
+  become: true
+  changed_when: false
+  register: guest_base_sshd_effective_config
+  when: guest_base_enable_password_ssh_disabled | bool
+
+- name: Validate SSH password authentication is disabled
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in guest_base_sshd_effective_config.stdout"
+      - "'kbdinteractiveauthentication no' in guest_base_sshd_effective_config.stdout"
+    fail_msg: "Effective sshd config still allows password or keyboard-interactive authentication."
+  when: guest_base_enable_password_ssh_disabled | bool

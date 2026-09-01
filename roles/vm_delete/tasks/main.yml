@@ -1,0 +1,81 @@
+---
+- name: Validate delete confirmation
+  ansible.builtin.assert:
+    that:
+      - vm_delete_name is defined
+      - vm_delete_name | length > 0
+      - vm_delete_confirm | bool
+      - vm_delete_confirm_name is defined
+      - vm_delete_confirm_name == vm_delete_name
+    fail_msg: "VM deletion blocked. Pass -e vm_delete_name=<name> -e vm_delete_confirm=true -e vm_delete_confirm_name=<name>"
+
+- name: Validate delete placement
+  ansible.builtin.assert:
+    that:
+      - vm_delete_datacenter is defined
+      - vm_delete_datacenter | length > 0
+      - vm_delete_folder is defined
+      - vm_delete_folder | length > 0
+      - vm_delete_enable_force is boolean
+    fail_msg: "VM deletion requires vm_delete_datacenter, vm_delete_folder, and boolean vm_delete_enable_force."
+
+- name: Read VM inventory before deletion
+  community.vmware.vmware_vm_info:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+  no_log: true
+  register: vm_delete_info
+
+- name: Select delete candidate by VM name
+  ansible.builtin.set_fact:
+    vm_delete_matches: >-
+      {{
+        vm_delete_info.virtual_machines
+        | selectattr('guest_name', 'equalto', vm_delete_name)
+        | list
+      }}
+
+- name: Validate delete target is unique
+  ansible.builtin.assert:
+    that:
+      - vm_delete_matches | length == 1
+    fail_msg: "VM deletion blocked. Expected exactly one VM named '{{ vm_delete_name }}', found {{ vm_delete_matches | length }}."
+
+- name: Set delete candidate facts
+  ansible.builtin.set_fact:
+    vm_delete_candidate: "{{ vm_delete_matches | first }}"
+    vm_delete_candidate_uuid: "{{ vm_delete_matches[0].uuid | default(vm_delete_matches[0].instance_uuid | default('')) }}"
+
+- name: Show VM delete candidate
+  ansible.builtin.debug:
+    msg:
+      - "VM deletion candidate:"
+      - "  name: {{ vm_delete_candidate.guest_name | default(vm_delete_name) }}"
+      - "  uuid: {{ vm_delete_candidate_uuid | default('unknown') }}"
+      - "  power_state: {{ vm_delete_candidate.power_state | default('unknown') }}"
+      - "  ip_address: {{ vm_delete_candidate.ip_address | default('unknown') }}"
+      - "  force: {{ vm_delete_enable_force }}"
+
+- name: Validate UUID confirmation when required
+  ansible.builtin.assert:
+    that:
+      - not (vm_delete_enable_uuid_confirmation | bool) or vm_delete_confirm_uuid == vm_delete_candidate_uuid
+    fail_msg: >-
+      VM deletion blocked. Pass
+      -e vm_delete_confirm_uuid={{ vm_delete_candidate_uuid | default('UNKNOWN') }}
+      or set vm_delete_enable_uuid_confirmation=false.
+
+- name: Delete VM from ESXi
+  community.vmware.vmware_guest:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    datacenter: "{{ vm_delete_datacenter }}"
+    folder: "{{ vm_delete_folder }}"
+    name: "{{ vm_delete_name }}"
+    state: absent
+    force: "{{ vm_delete_enable_force }}"
+  no_log: true

@@ -1,0 +1,36 @@
+---
+- name: Validate Linux guest SSH authentication
+  hosts: managed_vms
+  gather_facts: false
+  tags:
+    - always
+  roles:
+    - role: guest_auth_validate
+
+- name: Prepare SSH known_hosts for Linux guests
+  hosts: managed_vms
+  gather_facts: false
+  tags:
+    - known_hosts
+  roles:
+    - role: ssh_known_hosts
+
+- name: Wait for Linux guest SSH
+  hosts: managed_vms
+  gather_facts: false
+  tags:
+    - wait
+  roles:
+    - role: vm_wait
+
+- name: Bootstrap Linux guest
+  hosts: managed_vms
+  gather_facts: true
+  become: true
+  tags:
+    - bootstrap
+  roles:
+    - role: guest_base
+
+- name: Configure guest network
+  ansible.builtin.import_playbook: 11-guest-network.yml

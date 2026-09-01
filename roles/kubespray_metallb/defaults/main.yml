@@ -1,0 +1,16 @@
+---
+kubespray_metallb_artifacts_dir: >-
+  {{ playbook_dir }}/../.generated/kubespray/{{ kubespray_cluster_name | default('production') }}/artifacts
+kubespray_metallb_kubectl: "{{ kubespray_metallb_artifacts_dir }}/kubectl"
+kubespray_metallb_kubeconfig: "{{ kubespray_metallb_artifacts_dir }}/admin.conf"
+kubespray_metallb_kubectl_argv:
+  - "{{ kubespray_metallb_kubectl }}"
+  - --kubeconfig
+  - "{{ kubespray_metallb_kubeconfig }}"
+kubespray_metallb_manifest_file: "{{ kubespray_metallb_artifacts_dir }}/metallb-pool.yaml"
+kubespray_metallb_controller_timeout: 180s
+kubespray_metallb_apply_retries: 15
+kubespray_metallb_apply_delay: 20
+kubespray_metallb_memberlist_key: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=128') | b64encode }}"
+kubespray_metallb_debug: false
+kubespray_metallb_debug_log_tail: 120

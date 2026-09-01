@@ -1,0 +1,28 @@
+- name: Check Kubernetes API readiness
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - --raw=/readyz
+  changed_when: false
+  register: kubernetes_health_api
+  failed_when:
+    - kubernetes_health_api.rc != 0 or kubernetes_health_api.stdout | trim != "ok"
+
+- name: Check Kubernetes API readiness through kube-vip
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - --server=https://{{ kubespray_inventory_kube_vip_address }}:6443
+      - get
+      - --raw=/readyz
+  changed_when: false
+  register: kubernetes_health_kube_vip_api
+  failed_when:
+    - kubernetes_health_kube_vip_api.rc != 0
+      or kubernetes_health_kube_vip_api.stdout | trim != "ok"
+  when: kubernetes_health_validate_kube_vip | bool

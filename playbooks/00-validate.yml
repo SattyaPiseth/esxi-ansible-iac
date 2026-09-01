@@ -1,0 +1,7 @@
+---
+- name: Validate ESXi production variables
+  hosts: vmware_esxi
+  gather_facts: false
+
+  roles:
+    - esxi_validate

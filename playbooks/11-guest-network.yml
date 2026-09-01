@@ -1,0 +1,12 @@
+---
+- name: Configure Linux guest networking
+  hosts: managed_vms
+  gather_facts: true
+  become: true
+  serial: 1
+  any_errors_fatal: true
+  tags:
+    - network
+
+  roles:
+    - guest_network

@@ -1,0 +1,5 @@
+---
+vm_wait_delay: 10
+vm_wait_timeout: 600
+vm_wait_connect_timeout: 10
+vm_wait_sleep: 5

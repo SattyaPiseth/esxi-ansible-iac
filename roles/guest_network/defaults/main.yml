@@ -1,0 +1,5 @@
+---
+guest_network_netplan_config_file: /etc/netplan/99-ansible-static.yaml
+guest_network_netplan_backup_dir: /etc/netplan/.ansible-backup
+guest_network_search_domains: []
+guest_network_dns_test_name: ""

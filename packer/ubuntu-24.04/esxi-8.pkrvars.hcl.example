@@ -1,0 +1,17 @@
+esxi_hostname = "esxi8-01-lab.tss.local"
+esxi_username = "root"
+esxi_password = "REPLACE_WITH_ESXI_PASSWORD"
+
+# Lab mode only. Set false after trusting the ESXi host certificate or CA.
+esxi_insecure_connection = true
+
+# ESXi 8 uses the template defaults unless this host differs:
+# esxi_datastore = "RAID5-DATA"
+# esxi_iso_datastore = "RAID1-OS"
+# esxi_iso_directory = "iso"
+vm_firmware = "efi"
+
+# Keep only values that differ from the defaults in ubuntu-24.04.pkr.hcl.
+# Use PKR_VAR_* environment variables for secrets if you do not want them in a file.
+ssh_password = "REPLACE_WITH_TEMPORARY_PASSWORD"
+ssh_password_hash = "$6$REPLACE_WITH_SHA512_HASH"

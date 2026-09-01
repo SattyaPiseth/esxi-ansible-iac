@@ -1,0 +1,113 @@
+---
+- name: Validate generated Kubespray inventory exists
+  ansible.builtin.stat:
+    path: "{{ kubespray_control_inventory_dir }}/inventory.ini"
+  register: kubespray_control_inventory_file
+
+- name: Require generated Kubespray inventory
+  ansible.builtin.assert:
+    that:
+      - kubespray_control_inventory_file.stat.exists
+    fail_msg: "Run playbooks/07-kubespray-inventory.yml before Kubespray deployment."
+
+- name: Validate Kubespray private key exists
+  ansible.builtin.stat:
+    path: "{{ kubespray_control_private_key_file }}"
+  register: kubespray_control_private_key
+
+- name: Require Kubespray SSH private key
+  ansible.builtin.assert:
+    that:
+      - kubespray_control_private_key.stat.exists
+    fail_msg: "Kubespray SSH private key not found at {{ kubespray_control_private_key_file }}."
+
+- name: Normalize Kubespray become password source
+  ansible.builtin.set_fact:
+    kubespray_control_become_password: >-
+      {{
+        ansible_become_password
+        | default(ansible_become_pass | default('', true), true)
+      }}
+  no_log: true
+  when: kubespray_control_enable_cluster_playbook_run | bool or kubespray_control_enable_reset_playbook_run | bool
+
+- name: Validate Kubespray become password source
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (kubespray_control_enable_cluster_playbook_run | bool or kubespray_control_enable_reset_playbook_run | bool)
+        or (kubespray_control_become_password | string | length > 0)
+    fail_msg: >-
+      Kubespray execution requires a control-node sudo password from Ansible
+      Vault, --ask-become-pass, or ansible_become_password.
+  no_log: true
+
+- name: Show native Kubespray command
+  ansible.builtin.debug:
+    msg:
+      - "Kubespray installed at {{ kubespray_control_install_dir }}"
+      - "Inventory: {{ kubespray_control_inventory_dir }}/inventory.ini"
+      - >-
+        ansible.builtin.command: cd {{ kubespray_control_install_dir }} &&
+        {{ kubespray_control_venv_dir }}/bin/ansible-playbook
+        -i {{ kubespray_control_inventory_dir }}/inventory.ini
+        --private-key {{ kubespray_control_private_key_file }}
+        cluster.yml -b {{ kubespray_control_cluster_playbook_verbosity }}
+      - "Tags: {{ kubespray_control_cluster_playbook_tags | join(',') | default('all', true) }}"
+      - "Deploy log: {{ kubespray_control_deploy_log_file }}"
+  when: kubespray_control_enable_cluster_playbook_run | bool
+
+- name: Confirm cluster deployment was explicitly requested
+  ansible.builtin.assert:
+    that:
+      - not (kubespray_control_enable_cluster_playbook_run | bool) or (kubespray_control_enable_cluster_deploy | bool)
+    fail_msg: "Cluster deployment is blocked. Re-run with -e kubespray_control_enable_cluster_deploy=true."
+
+- name: Show native Kubespray reset command
+  ansible.builtin.debug:
+    msg:
+      - "Kubespray installed at {{ kubespray_control_install_dir }}"
+      - "Inventory: {{ kubespray_control_inventory_dir }}/inventory.ini"
+      - >-
+        ansible.builtin.command: cd {{ kubespray_control_install_dir }} &&
+        {{ kubespray_control_venv_dir }}/bin/ansible-playbook
+        -i {{ kubespray_control_inventory_dir }}/inventory.ini
+        --private-key {{ kubespray_control_private_key_file }}
+        reset.yml -b -e reset_confirmation=yes
+      - "Reset log: {{ kubespray_control_reset_log_file }}"
+  when: kubespray_control_enable_reset_playbook_run | bool
+
+- name: Confirm cluster reset was explicitly requested
+  ansible.builtin.assert:
+    that:
+      - not (kubespray_control_enable_reset_playbook_run | bool) or (kubespray_control_enable_cluster_reset | bool)
+    fail_msg: "Cluster reset is blocked. Re-run with -e kubespray_control_enable_cluster_reset=true."
+
+- name: Validate Kubespray deployment operator
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (kubespray_control_enable_cluster_playbook_run | bool or kubespray_control_enable_reset_playbook_run | bool)
+        or (kubespray_control_allow_root | default(false) | bool)
+        or ansible_facts.user_id != "root"
+    fail_msg: >-
+      Run the Kubespray wrapper as the automation operator, not with sudo.
+      The role uses become only for tasks that require elevated privileges.
+      If root execution is intentional, pass -e kubespray_control_allow_root=true.
+
+- name: Validate Kubespray playbook tags
+  ansible.builtin.assert:
+    that:
+      - kubespray_control_cluster_playbook_tags | type_debug == "list"
+      - >-
+        kubespray_control_cluster_playbook_tags
+        | select('string') | list | length
+        == kubespray_control_cluster_playbook_tags | length
+      - >-
+        kubespray_control_cluster_playbook_tags
+        | map('string')
+        | reject('match', '^[A-Za-z0-9_:-]+$')
+        | list | length == 0
+    fail_msg: >-
+      kubespray_control_cluster_playbook_tags must be a list of valid Ansible tag
+      names, for example ["network"].

@@ -1,0 +1,29 @@
+---
+- name: Manage power state for all managed VMs
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  vars:
+    vm_power_targets: "{{ managed_vm_names }}"
+
+  roles:
+    - esxi_validate
+
+  tasks:
+    - name: Validate VM power target list
+      assert:
+        that:
+          - vm_power_targets is sequence
+          - vm_power_targets is not string
+          - vm_power_targets | length > 0
+          - vm_power_targets | reject('string') | list | length == 0
+          - vm_power_targets | map('trim') | reject('equalto', '') | list | length == vm_power_targets | length
+        fail_msg: "vm_power_targets must be a non-empty list of VM names."
+
+    - name: Apply requested power state to each VM
+      include_role:
+        name: vm_power
+      vars:
+        vm_name: "{{ power_vm_name }}"
+      loop: "{{ vm_power_targets }}"
+      loop_control:
+        loop_var: power_vm_name

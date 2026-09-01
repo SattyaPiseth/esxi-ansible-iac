@@ -1,0 +1,8 @@
+---
+ssh_known_hosts_file: "{{ (lookup('env', 'HOME') | default(lookup('env', 'USERPROFILE'), true)) }}/.ssh/known_hosts"
+ssh_known_hosts_port: 22
+ssh_known_hosts_timeout: 10
+ssh_known_hosts_wait_timeout: 600
+ssh_known_hosts_wait_delay: 5
+ssh_known_hosts_enable_remove_old: false
+ssh_known_hosts_enable_hash_host: true

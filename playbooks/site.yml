@@ -1,0 +1,45 @@
+---
+- name: Validate ESXi
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  roles:
+    - esxi_validate
+
+- name: Show ESXi facts
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  roles:
+    - esxi_facts
+
+- name: Power selected VM
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  roles:
+    - vm_power
+
+- name: Validate Linux guest SSH authentication
+  hosts: linux_vms
+  gather_facts: false
+  roles:
+    - guest_auth_validate
+
+- name: Prepare SSH known_hosts for Linux guests
+  hosts: linux_vms
+  gather_facts: false
+  roles:
+    - ssh_known_hosts
+
+- name: Wait for Linux guest SSH
+  hosts: linux_vms
+  gather_facts: false
+  roles:
+    - vm_wait
+
+- name: Bootstrap Linux guest
+  hosts: linux_vms
+  gather_facts: true
+  become: true
+  roles:
+    - guest_base
+
+- ansible.builtin.import_playbook: 11-guest-network.yml

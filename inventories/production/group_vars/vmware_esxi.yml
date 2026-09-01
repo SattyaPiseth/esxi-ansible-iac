@@ -1,0 +1,18 @@
+---
+ansible_python_interpreter: "{{ control_node_prerequisites_vmware_venv_dir }}/bin/python"
+
+esxi_username: "root"
+# Lab mode: current standalone ESXi uses an untrusted/old VMCA certificate.
+# Set true after replacing the ESXi certificate or installing the matching CA.
+esxi_validate_certs: true
+
+esxi_datacenter: "ha-datacenter"
+esxi_default_folder: "/ha-datacenter/vm"
+
+esxi_allowed_power_states:
+  - powered-on
+  - powered-off
+  - reboot-guest
+  - restarted
+  - shutdown-guest
+  - suspended

@@ -1,0 +1,52 @@
+---
+- name: Ensure .ssh directory exists on Ansible control node
+  ansible.builtin.file:
+    path: "{{ ssh_known_hosts_file | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+
+- name: Remove stale ssh-keygen backup file
+  ansible.builtin.file:
+    path: "{{ ssh_known_hosts_file }}.old"
+    state: absent
+  delegate_to: localhost
+  throttle: 1
+  when: ssh_known_hosts_enable_remove_old | bool
+
+- name: Remove old SSH host key for recreated VM
+  ansible.builtin.known_hosts:
+    path: "{{ ssh_known_hosts_file }}"
+    name: "{{ ansible_host }}"
+    state: absent
+  delegate_to: localhost
+  throttle: 1
+  when: ssh_known_hosts_enable_remove_old | bool
+
+- name: Wait for SSH port before scanning host key
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ ssh_known_hosts_port }}"
+    delay: "{{ ssh_known_hosts_wait_delay }}"
+    timeout: "{{ ssh_known_hosts_wait_timeout }}"
+    state: started
+  delegate_to: localhost
+
+- name: Scan current SSH host key from VM
+  ansible.builtin.command:
+    cmd: "ssh-keyscan -T {{ ssh_known_hosts_timeout }} -p {{ ssh_known_hosts_port }} {{ ansible_host }}"
+  register: ssh_known_hosts_keyscan_result
+  changed_when: false
+  failed_when: ssh_known_hosts_keyscan_result.rc != 0 or ssh_known_hosts_keyscan_result.stdout_lines | length == 0
+  delegate_to: localhost
+
+- name: Add current SSH host key to known_hosts
+  ansible.builtin.known_hosts:
+    path: "{{ ssh_known_hosts_file }}"
+    name: "{{ ansible_host }}"
+    key: "{{ item }}"
+    state: present
+    hash_host: "{{ ssh_known_hosts_enable_hash_host }}"
+  loop: "{{ ssh_known_hosts_keyscan_result.stdout_lines }}"
+  delegate_to: localhost
+  throttle: 1

@@ -1,0 +1,11 @@
+---
+control_plane_kubeconfig_enable_install: true
+control_plane_kubeconfig_nodes: "{{ kubespray_inventory_control_plane_vm_names | default([]) }}"
+control_plane_kubeconfig_user: >-
+  {{
+    hostvars[control_plane_kubeconfig_nodes[0]].ansible_user
+    | default(ansible_user | default(lookup('env', 'USER')))
+    if control_plane_kubeconfig_nodes | length > 0
+    else ansible_user | default(lookup('env', 'USER'))
+  }}
+control_plane_kubeconfig_source: /etc/kubernetes/admin.conf

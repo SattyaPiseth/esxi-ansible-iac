@@ -1,0 +1,13 @@
+---
+- name: Validate guest SSH recovery key pair
+  hosts: managed_vms
+  gather_facts: false
+  roles:
+    - role: guest_auth_validate
+
+- name: Recover managed guest SSH keys through VMware Tools
+  hosts: vmware_esxi
+  gather_facts: false
+  roles:
+    - role: esxi_validate
+    - role: guest_ssh_recovery

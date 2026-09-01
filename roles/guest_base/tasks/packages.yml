@@ -1,0 +1,100 @@
+---
+- name: Remove legacy guest operator repository source files
+  ansible.builtin.file:
+    path: "{{ item.1 }}"
+    state: absent
+  become: true
+  loop: "{{ guest_base_operator_repositories | subelements('legacy_source_files', skip_missing=True) }}"
+  when: guest_base_operator_repositories | length > 0
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ guest_base_apt_cache_valid_time }}"
+  become: true
+
+- name: Install APT repository management dependencies
+  ansible.builtin.apt:
+    name: python3-debian
+    state: present
+  become: true
+  when: guest_base_operator_repositories | length > 0
+
+- name: Add guest operator repositories
+  ansible.builtin.deb822_repository:
+    name: "{{ item.name }}"
+    types: deb
+    uris: "{{ item.uris }}"
+    suites: "{{ item.suites }}"
+    components: "{{ item.components }}"
+    signed_by: "{{ item.signed_by | default(omit) }}"
+    state: present
+  become: true
+  loop: "{{ guest_base_operator_repositories }}"
+  when: guest_base_operator_repositories | length > 0
+
+- name: Update apt cache after adding guest operator repositories
+  ansible.builtin.apt:
+    update_cache: true
+  become: true
+  when: guest_base_operator_repositories | length > 0
+
+- name: Build guest operator repository package list
+  ansible.builtin.set_fact:
+    guest_base_operator_repository_package_list: >-
+      {{ guest_base_operator_repositories | map(attribute='packages') | flatten | list }}
+  when: guest_base_operator_repositories | length > 0
+
+- name: Install guest packages
+  ansible.builtin.apt:
+    name: "{{ guest_base_packages + guest_base_operator_packages + (guest_base_operator_repository_package_list | default([])) }}"
+    state: present
+  become: true
+
+- name: Install Snap package manager
+  ansible.builtin.apt:
+    name: snapd
+    state: present
+  become: true
+  when: guest_base_operator_snap_packages | length > 0
+
+- name: Enable Snap package manager socket
+  ansible.builtin.systemd_service:
+    name: snapd.socket
+    state: started
+    enabled: true
+  become: true
+  when: guest_base_operator_snap_packages | length > 0
+
+- name: Wait for Snap package manager initialization
+  ansible.builtin.command:
+    argv:
+      - snap
+      - wait
+      - system
+      - seed.loaded
+  become: true
+  changed_when: false
+  when: guest_base_operator_snap_packages | length > 0
+
+- name: Install guest Snap packages
+  community.general.snap:
+    name: "{{ guest_base_operator_snap_packages }}"
+    state: present
+  become: true
+  when: guest_base_operator_snap_packages | length > 0
+
+- name: Remove superseded guest APT packages
+  ansible.builtin.apt:
+    name: "{{ guest_base_operator_apt_packages_absent }}"
+    state: absent
+  become: true
+  when: guest_base_operator_apt_packages_absent | length > 0
+
+- name: Enable required systemd services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: "{{ guest_base_services }}"
+  become: true

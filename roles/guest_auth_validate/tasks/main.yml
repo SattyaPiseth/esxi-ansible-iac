@@ -1,0 +1,112 @@
+---
+- name: Validate guest SSH authentication settings
+  ansible.builtin.assert:
+    that:
+      - ansible_user is defined
+      - ansible_user | length > 0
+      - ansible_ssh_private_key_file is defined
+      - guest_authorized_key_file is defined
+      - guest_become_ready | bool
+    fail_msg: >-
+      Guest SSH authentication is incomplete for {{ inventory_hostname }}.
+      Configure ansible_ssh_private_key_file and its matching
+      guest_authorized_key_file. Define ansible_become_password in the
+      managed_vms group vault, or set guest_passwordless_sudo=true when sudo does
+      not require a password.
+
+- name: Validate shared guest SSH key configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        ansible_play_hosts_all
+        | map('extract', hostvars, 'ansible_ssh_private_key_file')
+        | unique
+        | length == 1
+      - >-
+        ansible_play_hosts_all
+        | map('extract', hostvars, 'guest_authorized_key_file')
+        | unique
+        | length == 1
+    fail_msg: >-
+      The managed_vms group must use one shared Ansible SSH keypair. Use a
+      separate validation workflow before introducing per-host keys.
+  run_once: true
+
+- name: Check configured guest SSH private key
+  ansible.builtin.stat:
+    path: "{{ ansible_ssh_private_key_file }}"
+  delegate_to: localhost
+  run_once: true
+  register: guest_auth_validate_private_key
+
+- name: Require configured guest SSH private key
+  ansible.builtin.assert:
+    that:
+      - guest_auth_validate_private_key.stat.exists
+      - guest_auth_validate_private_key.stat.isreg
+      - >-
+        guest_auth_validate_private_key.stat.mode | default('')
+        in ['0400', '0600']
+    fail_msg: >-
+      Guest SSH private key {{ ansible_ssh_private_key_file }} must exist on the
+      Ansible control node as a regular file with mode 0400 or 0600.
+  run_once: true
+
+- name: Check managed guest SSH public key
+  ansible.builtin.stat:
+    path: "{{ guest_authorized_key_file }}"
+  delegate_to: localhost
+  run_once: true
+  register: guest_auth_validate_public_key
+
+- name: Require managed guest SSH public key
+  ansible.builtin.assert:
+    that:
+      - guest_auth_validate_public_key.stat.exists
+      - guest_auth_validate_public_key.stat.isreg
+    fail_msg: >-
+      Managed public key {{ guest_authorized_key_file }} must exist as a regular
+      file on the Ansible control node.
+  run_once: true
+
+- name: Read configured private key fingerprint
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -l
+      - -E
+      - sha256
+      - -f
+      - "{{ ansible_ssh_private_key_file }}"
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+  register: guest_auth_validate_private_key_fingerprint
+
+- name: Read managed public key fingerprint
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -l
+      - -E
+      - sha256
+      - -f
+      - "{{ guest_authorized_key_file }}"
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+  register: guest_auth_validate_public_key_fingerprint
+
+- name: Validate managed guest SSH public key
+  ansible.builtin.assert:
+    that:
+      - >-
+        guest_auth_validate_public_key_fingerprint.stdout.split()[1]
+        == guest_auth_validate_private_key_fingerprint.stdout.split()[1]
+    fail_msg: >-
+      Managed public key {{ guest_authorized_key_file }} must exist and match
+      {{ ansible_ssh_private_key_file }}. Private key fingerprint:
+      {{ guest_auth_validate_private_key_fingerprint.stdout.split()[1] }}.
+      Public key fingerprint:
+      {{ guest_auth_validate_public_key_fingerprint.stdout.split()[1] }}.
+  run_once: true

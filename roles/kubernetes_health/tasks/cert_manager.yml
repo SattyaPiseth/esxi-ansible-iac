@@ -1,0 +1,145 @@
+- name: Wait for cert-manager deployments to be ready
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - rollout
+      - status
+      - "{{ item }}"
+      - --namespace=cert-manager
+      - "--timeout={{ kubernetes_health_rollout_timeout }}"
+  loop:
+    - deployment/cert-manager
+    - deployment/cert-manager-cainjector
+    - deployment/cert-manager-webhook
+  changed_when: false
+  when: kubernetes_health_cert_manager_enabled | bool
+
+- name: Read cert-manager webhook configuration
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - validatingwebhookconfiguration
+      - cert-manager-webhook
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_cert_manager_webhook
+  when: kubernetes_health_cert_manager_enabled | bool
+
+- name: Validate cert-manager webhook CA bundle
+  vars:
+    kubernetes_health_cert_manager_ca_bundles: >-
+      {{
+        (kubernetes_health_cert_manager_webhook.stdout | from_json).webhooks
+        | map(attribute='clientConfig')
+        | map(attribute='caBundle')
+        | list
+      }}
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_cert_manager_ca_bundles | length > 0
+      - kubernetes_health_cert_manager_ca_bundles | reject('equalto', '') | list | length
+        == kubernetes_health_cert_manager_ca_bundles | length
+    fail_msg: >-
+      cert-manager webhook CA bundle is not injected yet. Wait for cainjector
+      and the webhook deployment to finish before applying cert-manager-dependent
+      resources.
+  when: kubernetes_health_cert_manager_enabled | bool
+
+- name: Read internal CA ClusterIssuer
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - clusterissuer.cert-manager.io
+      - "{{ kubernetes_health_internal_ca_clusterissuer_name }}"
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_internal_ca_clusterissuer
+  when: kubernetes_health_validate_internal_ca_clusterissuer | bool
+
+- name: Validate internal CA ClusterIssuer readiness
+  vars:
+    kubernetes_health_internal_ca_conditions: >-
+      {{
+        (kubernetes_health_internal_ca_clusterissuer.stdout | from_json).status.conditions
+        | default([])
+      }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        kubernetes_health_internal_ca_conditions
+        | selectattr('type', 'equalto', 'Ready')
+        | selectattr('status', 'equalto', 'True')
+        | list | length > 0
+    fail_msg: >-
+      Internal CA ClusterIssuer is not Ready. Confirm its root CA Secret exists
+      and cert-manager has reconciled the issuer.
+  when: kubernetes_health_validate_internal_ca_clusterissuer | bool
+
+- name: Read internal CA root Secret
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - secret
+      - "{{ kubernetes_health_internal_ca_secret_name }}"
+      - --namespace={{ kubernetes_health_internal_ca_secret_namespace }}
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_internal_ca_secret
+  when: kubernetes_health_validate_internal_ca_clusterissuer | bool
+
+- name: Validate internal CA root Secret
+  vars:
+    kubernetes_health_internal_ca_secret_data: >-
+      {{ (kubernetes_health_internal_ca_secret.stdout | from_json).data | default({}) }}
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_internal_ca_secret_data['tls.crt'] is defined
+      - kubernetes_health_internal_ca_secret_data['tls.key'] is defined
+    fail_msg: >-
+      Internal CA root Secret is missing tls.crt or tls.key.
+  when: kubernetes_health_validate_internal_ca_clusterissuer | bool
+
+- name: Read cert-manager webhook endpoints
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - endpoints
+      - cert-manager-webhook
+      - --namespace=cert-manager
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_cert_manager_endpoints
+  when: kubernetes_health_cert_manager_enabled | bool
+
+- name: Validate cert-manager webhook endpoints
+  ansible.builtin.assert:
+    that:
+      - >-
+        (kubernetes_health_cert_manager_endpoints.stdout | from_json).subsets is defined
+      - >-
+        (kubernetes_health_cert_manager_endpoints.stdout | from_json).subsets | length > 0
+      - >-
+        (kubernetes_health_cert_manager_endpoints.stdout | from_json).subsets[0].addresses
+        | default([]) | length > 0
+    fail_msg: >-
+      cert-manager webhook service has no ready endpoints yet. Wait for the
+      webhook pod to become reachable before continuing.
+  when: kubernetes_health_cert_manager_enabled | bool

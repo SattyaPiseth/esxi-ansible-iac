@@ -1,0 +1,20 @@
+.vaultpass
+*.retry
+.venv/
+.ansible/
+.agents/
+__pycache__/
+*.log
+.idea/
+
+#inventories/*/group_vars/vault.yml
+inventories/*/group_vars/*/vault.yml
+inventories/*/host_vars/*/vault.yml
+inventories/*/group_vars/*/ssh_keys.yml
+
+files/iso/*.iso
+.generated/
+
+# Local Packer variable files can contain ESXi and guest credentials.
+*.pkrvars.hcl
+!*.pkrvars.hcl.example

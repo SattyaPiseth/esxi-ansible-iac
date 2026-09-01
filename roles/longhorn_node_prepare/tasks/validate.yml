@@ -1,0 +1,22 @@
+---
+- name: Validate Longhorn node configuration
+  ansible.builtin.assert:
+    that:
+      - longhorn_node_prepare_packages is sequence
+      - longhorn_node_prepare_packages is not string
+      - longhorn_node_prepare_kernel_modules is sequence
+      - longhorn_node_prepare_kernel_modules is not string
+      - longhorn_node_prepare_required_commands is sequence
+      - longhorn_node_prepare_required_commands is not string
+      - longhorn_node_prepare_enable_multipathd_disabled is boolean
+      - longhorn_node_prepare_multipath_units is sequence
+      - longhorn_node_prepare_multipath_units is not string
+      - longhorn_node_prepare_data_path is match('^/')
+      - longhorn_node_prepare_data_filesystem in ['ext4', 'xfs']
+      - >-
+        not (longhorn_node_prepare_has_data_disk | bool)
+        or longhorn_node_prepare_data_device is match('^/dev/disk/by-id/')
+    fail_msg: >-
+      Longhorn data disks must use a stable /dev/disk/by-id path and ext4 or
+      XFS. Keep longhorn_node_prepare_has_data_disk disabled until a dedicated
+      disk is attached and identified on every Longhorn node.

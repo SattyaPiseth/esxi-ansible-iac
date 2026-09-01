@@ -1,0 +1,5 @@
+vm_name = "ubuntu_24.04-wrk-03"
+guest_hostname = "ubuntu-24-04-wrk-03"
+vm_cpu = 6
+vm_memory_mb = 8192
+vm_disk_mb = 204800

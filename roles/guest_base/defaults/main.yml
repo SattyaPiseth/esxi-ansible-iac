@@ -1,0 +1,43 @@
+---
+guest_base_packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - iputils-ping
+  - net-tools
+  - iproute2
+  - dnsutils
+  - openssh-client
+  - ca-certificates
+  - python3-apt
+  - open-vm-tools
+  - rsync
+  - systemd-timesyncd
+  - ethtool
+
+guest_base_operator_packages: []
+guest_base_operator_repositories: []
+guest_base_operator_apt_packages_absent: []
+guest_base_operator_snap_packages: []
+
+guest_base_services:
+  - ssh.service
+  - open-vm-tools.service
+  - systemd-timesyncd.service
+
+guest_base_apt_cache_valid_time: 3600
+guest_base_timezone: "{{ timezone | default('Asia/Phnom_Penh') }}"
+guest_base_ntp_sync_retries: 24
+guest_base_ntp_sync_delay: 5
+guest_base_enable_password_ssh_disabled: false
+guest_base_authorized_keys: []
+
+guest_base_enable_nic_offloads_disabled: false
+guest_base_nic_offload_interface: "{{ ansible_facts.default_ipv4.interface | default('ens33') }}"
+guest_base_nic_offload_features:
+  - "gro off"
+  - "lro off"
+  - "tx-udp_tnl-segmentation off"
+  - "tx-udp_tnl-csum-segmentation off"

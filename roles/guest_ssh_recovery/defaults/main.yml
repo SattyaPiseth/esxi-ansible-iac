@@ -1,0 +1,4 @@
+---
+guest_ssh_recovery_enable_recovery: false
+guest_ssh_recovery_vm_names: []
+guest_ssh_recovery_timeout: 60

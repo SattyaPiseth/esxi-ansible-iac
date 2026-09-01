@@ -1,0 +1,6 @@
+---
+- name: Prepare Ansible control node
+  hosts: control_node
+  gather_facts: true
+  roles:
+    - control_node_prerequisites

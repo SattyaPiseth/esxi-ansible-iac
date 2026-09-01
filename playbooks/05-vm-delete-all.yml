@@ -1,0 +1,41 @@
+---
+- name: Delete all managed VMs from standalone ESXi
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  vars:
+    vm_delete_targets: "{{ managed_vm_names }}"
+    confirm_delete_all: false
+    confirm_delete_all_phrase: ""
+    required_delete_all_phrase: DELETE_ALL_MANAGED_VMS
+
+  roles:
+    - esxi_validate
+
+  tasks:
+    - name: Validate delete-all confirmation
+      assert:
+        that:
+          - vm_delete_targets is sequence
+          - vm_delete_targets is not string
+          - vm_delete_targets | length > 0
+          - vm_delete_targets | reject('string') | list | length == 0
+          - vm_delete_targets | map('trim') | reject('equalto', '') | list | length == vm_delete_targets | length
+          - vm_delete_targets | unique | list | length == vm_delete_targets | length
+          - confirm_delete_all | bool
+          - confirm_delete_all_phrase == required_delete_all_phrase
+        fail_msg: >-
+          Batch VM deletion blocked. Pass
+          -e confirm_delete_all=true
+          -e confirm_delete_all_phrase={{ required_delete_all_phrase }}
+          and ensure vm_delete_targets is a non-empty VM name list.
+
+    - name: Delete each managed VM
+      include_role:
+        name: vm_delete
+      vars:
+        vm_name: "{{ delete_vm_name }}"
+        confirm_delete: true
+        confirm_vm_name: "{{ delete_vm_name }}"
+      loop: "{{ vm_delete_targets }}"
+      loop_control:
+        loop_var: delete_vm_name

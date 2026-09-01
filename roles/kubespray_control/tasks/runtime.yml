@@ -1,0 +1,98 @@
+---
+- name: Detect compatible Kubespray Python runtimes
+  ansible.builtin.command:
+    argv:
+      - "{{ item }}"
+      - "-c"
+      - "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+  changed_when: false
+  failed_when: false
+  register: kubespray_control_python_candidates_result
+  loop: "{{ kubespray_control_python_candidates }}"
+
+- name: Select Kubespray Python runtime
+  ansible.builtin.set_fact:
+    kubespray_control_python_runtime: "{{ item.item }}"
+    kubespray_control_python_runtime_version: "{{ item.stdout }}"
+  loop: "{{ kubespray_control_python_candidates_result.results }}"
+  when:
+    - kubespray_control_python_runtime is not defined
+    - item.rc == 0
+    - item.stdout is version('3.11', '>=')
+    - item.stdout is version('3.13', '<=')
+
+- name: Require compatible Kubespray Python runtime
+  ansible.builtin.assert:
+    that:
+      - kubespray_control_python_runtime is defined
+    fail_msg: >-
+      Kubespray {{ kubespray_control_version }} requirements need ansible==11.13.0,
+      which requires Python 3.11-3.13 on the Ansible control node. Install
+      Python 3.11, 3.12, or 3.13, or use a Kubespray release compatible with
+      the current control-node Python.
+
+- name: Clone or update Kubespray repository
+  ansible.builtin.git:
+    repo: "{{ kubespray_control_repo_url }}"
+    dest: "{{ kubespray_control_install_dir }}"
+    version: "{{ kubespray_control_version }}"
+    depth: 1
+    update: true
+  become: true
+
+- name: Ensure Kubespray repository is readable by the operator
+  ansible.builtin.file:
+    path: "{{ kubespray_control_install_dir }}"
+    state: directory
+    owner: "{{ ansible_facts.user_id }}"
+    group: "{{ ansible_facts.user_gid }}"
+    recurse: true
+  become: true
+
+- name: Check existing Kubespray virtual environment
+  ansible.builtin.stat:
+    path: "{{ kubespray_control_venv_dir }}/bin/python"
+  register: kubespray_control_existing_venv_python
+
+- name: Read existing Kubespray virtual environment Python version
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_venv_dir }}/bin/python"
+      - "-c"
+      - "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+  changed_when: false
+  register: kubespray_control_existing_venv_python_version
+  when: kubespray_control_existing_venv_python.stat.exists
+
+- name: Recreate Kubespray virtual environment when Python version changed
+  ansible.builtin.file:
+    path: "{{ kubespray_control_venv_dir }}"
+    state: absent
+  when:
+    - kubespray_control_existing_venv_python.stat.exists
+    - kubespray_control_existing_venv_python_version.stdout != kubespray_control_python_runtime_version
+
+- name: Create Kubespray Python virtual environment
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_python_runtime }}"
+      - "-m"
+      - "venv"
+      - "{{ kubespray_control_venv_dir }}"
+    creates: "{{ kubespray_control_venv_dir }}/bin/python"
+
+- name: Install Kubespray Python requirements
+  ansible.builtin.pip:
+    requirements: "{{ kubespray_control_install_dir }}/requirements.txt"
+    virtualenv: "{{ kubespray_control_venv_dir }}"
+    virtualenv_command: "{{ kubespray_control_python_runtime }} -m venv"
+
+- name: Read installed Kubespray Ansible version
+  ansible.builtin.command:
+    cmd: "{{ kubespray_control_venv_dir }}/bin/ansible --version"
+  changed_when: false
+  register: kubespray_control_ansible_version
+
+- name: Show Kubespray Ansible runtime
+  ansible.builtin.debug:
+    msg: "{{ kubespray_control_ansible_version.stdout_lines }}"

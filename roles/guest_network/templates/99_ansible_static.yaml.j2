@@ -1,0 +1,24 @@
+---
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ ansible_facts.default_ipv4.interface }}:
+      dhcp4: false
+      dhcp6: false
+      addresses:
+        - "{{ ansible_host }}/{{ guest_network_prefix }}"
+      routes:
+        - to: default
+          via: "{{ guest_network_gateway }}"
+      nameservers:
+        addresses:
+{% for nameserver in guest_network_nameservers %}
+          - "{{ nameserver }}"
+{% endfor %}
+{% if guest_network_search_domains | length > 0 %}
+        search:
+{% for domain in guest_network_search_domains %}
+          - "{{ domain }}"
+{% endfor %}
+{% endif %}

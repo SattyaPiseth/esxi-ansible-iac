@@ -1,0 +1,27 @@
+- name: Read Kubernetes node NIC offload state
+  ansible.builtin.command:
+    argv:
+      - ethtool
+      - -k
+      - "{{ hostvars[item].kubernetes_primary_interface }}"
+  changed_when: false
+  become: true
+  delegate_to: "{{ item }}"
+  loop: "{{ (kubespray_inventory_control_plane_vm_names + kubespray_inventory_worker_vm_names) | unique | list }}"
+  register: kubernetes_health_nic_offloads
+  when: kubernetes_health_validate_nic_offloads | bool
+
+- name: Validate Kubernetes node NIC offload state
+  ansible.builtin.assert:
+    that:
+      - "'generic-receive-offload: off' in item.stdout"
+      - "'large-receive-offload: off' in item.stdout"
+      - "'tx-udp_tnl-segmentation: off' in item.stdout"
+      - "'tx-udp_tnl-csum-segmentation: off' in item.stdout"
+    fail_msg: >-
+      {{ item.item }} still has NIC offload settings that can break Calico VXLAN
+      traffic on this VMware environment.
+  loop: "{{ kubernetes_health_nic_offloads.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: kubernetes_health_validate_nic_offloads | bool

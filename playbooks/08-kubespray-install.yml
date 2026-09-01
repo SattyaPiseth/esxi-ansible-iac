@@ -1,0 +1,7 @@
+---
+- name: Install Kubespray on the Ansible control node
+  hosts: control_node
+  gather_facts: true
+
+  roles:
+    - kubespray_control

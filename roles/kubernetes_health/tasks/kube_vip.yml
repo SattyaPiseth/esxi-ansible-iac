@@ -1,0 +1,68 @@
+- name: Read kube-vip pods
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - pods
+      - --namespace=kube-system
+      - --selector=k8s-app=kube-vip
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_kube_vip_pods
+  when: kubernetes_health_validate_kube_vip | bool
+
+- name: Validate kube-vip pods on control-plane nodes
+  vars:
+    kubernetes_health_kube_vip_items: >-
+      {{ (kubernetes_health_kube_vip_pods.stdout | from_json)['items'] }}
+    kubernetes_health_kube_vip_ready_nodes: >-
+      {{
+        kubernetes_health_kube_vip_items
+        | selectattr('status.phase', 'equalto', 'Running')
+        | map(attribute='spec.nodeName')
+        | list
+      }}
+    kubernetes_health_expected_control_plane_node_names: >-
+      {{
+        kubespray_inventory_control_plane_vm_names
+        | map('replace', '_', '-')
+        | map('replace', '.', '-')
+        | list
+      }}
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_kube_vip_ready_nodes | length == kubernetes_health_expected_control_plane_node_names | length
+      - kubernetes_health_expected_control_plane_node_names | difference(kubernetes_health_kube_vip_ready_nodes) | length == 0
+    fail_msg: >-
+      kube-vip is enabled, but a ready kube-vip pod was not found on every
+      control-plane node.
+  when: kubernetes_health_validate_kube_vip | bool
+
+- name: Validate kube-vip restart count
+  vars:
+    kubernetes_health_kube_vip_items: >-
+      {{ (kubernetes_health_kube_vip_pods.stdout | from_json)['items'] }}
+    kubernetes_health_kube_vip_restart_counts: >-
+      {{
+        kubernetes_health_kube_vip_items
+        | map(attribute='status')
+        | map(attribute='containerStatuses')
+        | map('default', [])
+        | flatten
+        | map(attribute='restartCount')
+        | list
+      }}
+    kubernetes_health_kube_vip_max_observed_restarts: >-
+      {{ kubernetes_health_kube_vip_restart_counts | default([0], true) | max }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        kubernetes_health_kube_vip_max_observed_restarts | int
+        <= kubernetes_health_kube_vip_max_restarts | int
+    fail_msg: >-
+      kube-vip has container restarts. Inspect previous kube-vip logs and node
+      logs for the interruption window before declaring the API VIP stable.
+  when: kubernetes_health_validate_kube_vip | bool

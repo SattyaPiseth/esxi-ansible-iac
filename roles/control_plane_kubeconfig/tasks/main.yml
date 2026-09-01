@@ -1,0 +1,54 @@
+---
+- name: Validate control-plane kubeconfig inputs
+  ansible.builtin.assert:
+    that:
+      - control_plane_kubeconfig_nodes is sequence
+      - control_plane_kubeconfig_nodes is not string
+      - control_plane_kubeconfig_nodes | length > 0
+      - control_plane_kubeconfig_user | string | length > 0
+      - control_plane_kubeconfig_source | string | length > 0
+    fail_msg: "Control-plane kubeconfig installation requires nodes, user, and source path."
+  when: control_plane_kubeconfig_enable_install | bool
+
+- name: Read control-plane kubeconfig user home
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ control_plane_kubeconfig_user }}"
+  changed_when: false
+  delegate_to: "{{ item }}"
+  loop: "{{ control_plane_kubeconfig_nodes | unique | list }}"
+  register: control_plane_kubeconfig_users
+  when: control_plane_kubeconfig_enable_install | bool
+
+- name: Ensure control-plane user kubeconfig directories exist
+  ansible.builtin.file:
+    path: "{{ item.stdout.split(':')[5] }}/.kube"
+    state: directory
+    owner: "{{ control_plane_kubeconfig_user }}"
+    mode: "0700"
+  become: true
+  delegate_to: "{{ item.item }}"
+  loop: "{{ control_plane_kubeconfig_users.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - control_plane_kubeconfig_enable_install | bool
+    - item.rc == 0
+
+- name: Install control-plane user kubeconfig
+  ansible.builtin.copy:
+    src: "{{ control_plane_kubeconfig_source }}"
+    dest: "{{ item.stdout.split(':')[5] }}/.kube/config"
+    remote_src: true
+    owner: "{{ control_plane_kubeconfig_user }}"
+    mode: "0600"
+  become: true
+  delegate_to: "{{ item.item }}"
+  loop: "{{ control_plane_kubeconfig_users.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - control_plane_kubeconfig_enable_install | bool
+    - item.rc == 0

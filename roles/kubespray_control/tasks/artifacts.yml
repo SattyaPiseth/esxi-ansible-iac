@@ -1,0 +1,39 @@
+---
+- name: Ensure Kubespray client artifacts are usable
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+    owner: "{{ ansible_facts.user_id }}"
+    group: "{{ ansible_facts.user_gid }}"
+  loop:
+    - { path: "{{ kubespray_control_artifacts_dir }}/kubectl", mode: "0755" }
+    - { path: "{{ kubespray_control_artifacts_dir }}/admin.conf", mode: "0600" }
+  become: true
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+
+- name: Ensure operator kubeconfig directory exists
+  ansible.builtin.file:
+    path: "{{ kubespray_control_operator_kubeconfig | dirname }}"
+    state: directory
+    owner: "{{ ansible_facts.user_id }}"
+    group: "{{ ansible_facts.user_gid }}"
+    mode: "0700"
+  when:
+    - kubespray_control_enable_operator_kubeconfig_install | bool
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+
+- name: Install operator kubeconfig
+  ansible.builtin.copy:
+    src: "{{ kubespray_control_artifacts_dir }}/admin.conf"
+    dest: "{{ kubespray_control_operator_kubeconfig }}"
+    remote_src: true
+    owner: "{{ ansible_facts.user_id }}"
+    group: "{{ ansible_facts.user_gid }}"
+    mode: "0600"
+  when:
+    - kubespray_control_enable_operator_kubeconfig_install | bool
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool

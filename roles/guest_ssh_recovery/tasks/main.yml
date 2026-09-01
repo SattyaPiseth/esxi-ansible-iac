@@ -1,0 +1,57 @@
+---
+- name: Validate guest SSH recovery request
+  ansible.builtin.assert:
+    that:
+      - guest_ssh_recovery_enable_recovery | bool
+      - guest_ssh_recovery_vm_names is sequence
+      - guest_ssh_recovery_vm_names is not string
+      - guest_ssh_recovery_vm_names | length > 0
+      - guest_ssh_recovery_vm_names | difference(managed_vm_names) | length == 0
+      - guest_ssh_recovery_vm_names | difference(groups['managed_vms']) | length == 0
+    fail_msg: >-
+      Recovery requires guest_ssh_recovery_enable_recovery=true and an explicit
+      guest_ssh_recovery_vm_names list containing only managed Linux VMs.
+
+- name: Validate recovery credentials
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].ansible_user is defined
+      - hostvars[item].ansible_user | length > 0
+      - hostvars[item].ansible_password is defined
+      - hostvars[item].ansible_password | length > 0
+      - hostvars[item].guest_authorized_key_file is defined
+      - hostvars[item].guest_authorized_key_file | length > 0
+    fail_msg: "Guest credentials or public key path are incomplete for {{ item }}."
+  loop: "{{ guest_ssh_recovery_vm_names }}"
+  no_log: true
+
+# This is an emergency transport exception: authorized_key cannot run over SSH
+# when the configured key is no longer authorized on the guest.
+- name: Install current public key through VMware Tools
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    datacenter: "{{ esxi_datacenter }}"
+    folder: "{{ esxi_default_folder }}"
+    vm_id: "{{ item }}"
+    vm_id_type: vm_name
+    vm_username: "{{ hostvars[item].ansible_user }}"
+    vm_password: "{{ hostvars[item].ansible_password }}"
+    vm_shell: /bin/bash
+    vm_shell_args: >-
+      -c 'set -eu; umask 077;
+      home="$(getent passwd $(id -u) | cut -d: -f6)"; test -n "$home";
+      mkdir -p "$home/.ssh"; touch "$home/.ssh/authorized_keys";
+      key="$(printf "%s" "{{ lookup(
+        'ansible.builtin.file', hostvars[item].guest_authorized_key_file
+      ) | b64encode }}" | base64 -d)";
+      grep -qxF "$key" "$home/.ssh/authorized_keys" ||
+      printf "%s\n" "$key" >> "$home/.ssh/authorized_keys";
+      chmod 0700 "$home/.ssh"; chmod 0600 "$home/.ssh/authorized_keys"'
+    wait_for_process: true
+    timeout: "{{ guest_ssh_recovery_timeout }}"
+  loop: "{{ guest_ssh_recovery_vm_names }}"
+  delegate_to: localhost
+  no_log: true

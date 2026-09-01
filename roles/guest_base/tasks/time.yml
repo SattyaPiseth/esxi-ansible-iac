@@ -1,0 +1,53 @@
+---
+- name: Read configured timezone
+  ansible.builtin.command:
+    argv:
+      - timedatectl
+      - show
+      - --property=Timezone
+      - --value
+  changed_when: false
+  register: guest_base_timezone_status
+
+- name: Set guest timezone
+  ansible.builtin.command:
+    argv:
+      - timedatectl
+      - set-timezone
+      - "{{ guest_base_timezone }}"
+  become: true
+  changed_when: true
+  when: guest_base_timezone_status.stdout != guest_base_timezone
+
+- name: Read systemd NTP state
+  ansible.builtin.command:
+    argv:
+      - timedatectl
+      - show
+      - --property=NTP
+      - --value
+  changed_when: false
+  register: guest_base_ntp_status
+
+- name: Enable systemd network time synchronization
+  ansible.builtin.command:
+    argv:
+      - timedatectl
+      - set-ntp
+      - "true"
+  become: true
+  changed_when: true
+  when: guest_base_ntp_status.stdout != "yes"
+
+- name: Wait for guest clock synchronization
+  ansible.builtin.command:
+    argv:
+      - timedatectl
+      - show
+      - --property=NTPSynchronized
+      - --value
+  changed_when: false
+  register: guest_base_ntp_synchronized
+  retries: "{{ guest_base_ntp_sync_retries }}"
+  delay: "{{ guest_base_ntp_sync_delay }}"
+  until: guest_base_ntp_synchronized.stdout == "yes"

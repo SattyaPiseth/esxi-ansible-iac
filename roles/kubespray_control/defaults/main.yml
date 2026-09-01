@@ -1,0 +1,44 @@
+---
+kubespray_control_repo_url: "https://github.com/kubernetes-sigs/kubespray.git"
+kubespray_control_version: "{{ kubespray_version | default('v2.31.0') }}"
+kubespray_control_install_dir: "/opt/kubespray"
+kubespray_control_venv_dir: "{{ kubespray_control_install_dir }}/.venv"
+kubespray_control_python_candidates:
+  - python3.13
+  - python3.12
+  - python3.11
+  - python3
+kubespray_control_inventory_dir: "{{ playbook_dir }}/../.generated/kubespray/{{ kubespray_cluster_name | default('production') }}"
+kubespray_control_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/esxi_ansible_ed25519"
+kubespray_control_enable_cluster_deploy: false
+kubespray_control_enable_cluster_playbook_run: false
+kubespray_control_enable_cluster_reset: false
+kubespray_control_enable_reset_playbook_run: false
+kubespray_control_cluster_playbook_verbosity: "-v"
+kubespray_control_cluster_playbook_forks: 3
+kubespray_control_cluster_playbook_tags: []
+kubespray_control_become_password_env_var: KUBESPRAY_BECOME_PASSWORD
+kubespray_control_enable_deploy_output_hidden: true
+kubespray_control_deploy_log_file: "{{ kubespray_control_inventory_dir }}/kubespray-deploy.log"
+kubespray_control_reset_log_file: "{{ kubespray_control_inventory_dir }}/kubespray-reset.log"
+kubespray_control_artifacts_dir: "{{ kubespray_control_inventory_dir }}/artifacts"
+kubespray_control_fact_cache_dir: "{{ kubespray_control_inventory_dir }}/fact-cache"
+kubespray_control_enable_operator_kubeconfig_install: true
+kubespray_control_operator_kubeconfig: "{{ ansible_facts.user_dir }}/.kube/config"
+kubespray_control_enable_artifact_cleanup_before_deploy: true
+kubespray_control_enable_metrics_server: >-
+  {{ kubespray_inventory_enable_metrics_server | default(kubespray_enable_metrics_server | default(false)) }}
+kubespray_control_enable_metrics_server_apiservice_insecure_skip_tls_verify: >-
+  {{
+    kubespray_inventory_enable_metrics_server_apiservice_insecure_skip_tls_verify
+    | default(kubespray_enable_metrics_server_apiservice_insecure_skip_tls_verify | default(true))
+  }}
+kubespray_control_enable_metrics_server_deployment_reconcile: true
+kubespray_control_metrics_server_probe_timeout_seconds: >-
+  {{ kubespray_metrics_server_probe_timeout_seconds | default(5) }}
+kubespray_control_packages:
+  - git
+  - python3
+  - python3-venv
+  - python3-pip
+  - rsync

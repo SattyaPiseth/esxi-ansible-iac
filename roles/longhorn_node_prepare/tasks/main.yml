@@ -1,0 +1,12 @@
+---
+- name: Validate Longhorn node inputs
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Install Longhorn node packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Configure Longhorn node storage
+  ansible.builtin.import_tasks: storage.yml
+
+- name: Validate Longhorn node health
+  ansible.builtin.import_tasks: health.yml

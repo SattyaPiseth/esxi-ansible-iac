@@ -1,0 +1,179 @@
+---
+- name: Validate guest network settings
+  ansible.builtin.assert:
+    that:
+      - ansible_host is defined
+      - ansible_host | string | length > 0
+      - ansible_facts.default_ipv4.interface is defined
+      - guest_network_prefix | int > 0
+      - guest_network_prefix | int <= 32
+      - guest_network_gateway | string | length > 0
+      - guest_network_nameservers is sequence
+      - guest_network_nameservers is not string
+      - guest_network_nameservers | length > 0
+      - guest_network_search_domains is sequence
+      - guest_network_search_domains is not string
+      - >-
+        guest_network_search_domains
+        | select('string')
+        | reject('equalto', '')
+        | list
+        | length == guest_network_search_domains | length
+    fail_msg: >-
+      Static guest networking requires ansible_host, a detected default IPv4
+      interface, a valid prefix, gateway, and at least one nameserver.
+
+- name: Find active Netplan configuration files
+  ansible.builtin.find:
+    paths: /etc/netplan
+    patterns:
+      - "*.yaml"
+      - "*.yml"
+    file_type: file
+    recurse: false
+  become: true
+  register: guest_network_netplan_files
+
+- name: Build conflicting Netplan file list
+  ansible.builtin.set_fact:
+    guest_network_conflicting_netplan_files: >-
+      {{ guest_network_netplan_files.files
+         | rejectattr('path', 'equalto', guest_network_netplan_config_file)
+         | list }}
+
+- name: Create Netplan backup directory
+  ansible.builtin.file:
+    path: "{{ guest_network_netplan_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+- name: Back up conflicting Netplan files
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ guest_network_netplan_backup_dir }}/{{ item.path | basename }}"
+    remote_src: true
+    force: false
+    mode: preserve
+  loop: "{{ guest_network_conflicting_netplan_files }}"
+  become: true
+
+- name: Disable cloud-init network regeneration
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    content: "network: {config: disabled}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Remove backed-up conflicting Netplan files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ guest_network_conflicting_netplan_files }}"
+  become: true
+
+- name: Render authoritative guest Netplan configuration
+  ansible.builtin.template:
+    src: 99_ansible_static.yaml.j2
+    dest: "{{ guest_network_netplan_config_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+  become: true
+
+- name: Validate generated Netplan configuration
+  ansible.builtin.command:
+    argv:
+      - netplan
+      - generate
+  become: true
+  changed_when: false
+
+- name: Apply and verify guest network configuration
+  when: not ansible_check_mode
+  block:
+    - name: Apply authoritative Netplan configuration
+      ansible.builtin.command:
+        argv:
+          - netplan
+          - apply
+      become: true
+      changed_when: false
+
+    - name: Wait for guest connection after network configuration
+      ansible.builtin.wait_for_connection:
+        delay: 1
+        connect_timeout: 5
+        sleep: 2
+        timeout: 60
+
+    - name: Flush systemd-resolved caches
+      ansible.builtin.command:
+        argv:
+          - resolvectl
+          - flush-caches
+      become: true
+      changed_when: false
+
+    - name: Read effective default route
+      ansible.builtin.command:
+        argv:
+          - ip
+          - route
+          - show
+          - default
+      changed_when: false
+      register: guest_network_default_route
+
+    - name: Read effective interface nameservers
+      ansible.builtin.command:
+        argv:
+          - resolvectl
+          - dns
+          - "{{ ansible_facts.default_ipv4.interface }}"
+      changed_when: false
+      register: guest_network_resolver_status
+
+    - name: Read effective interface DNS domains
+      ansible.builtin.command:
+        argv:
+          - resolvectl
+          - domain
+          - "{{ ansible_facts.default_ipv4.interface }}"
+      changed_when: false
+      register: guest_network_resolver_domains
+
+    - name: Validate effective route and nameservers
+      ansible.builtin.assert:
+        that:
+          - "('via ' ~ guest_network_gateway) in guest_network_default_route.stdout"
+          - >-
+            guest_network_nameservers
+            | difference(guest_network_resolver_status.stdout.split())
+            | length == 0
+          - >-
+            guest_network_search_domains
+            | difference(guest_network_resolver_domains.stdout.split())
+            | length == 0
+        fail_msg: >-
+          Applied guest networking does not expose the configured default
+          gateway, nameservers, or DNS routing domains.
+
+    - name: Validate internal DNS resolution
+      ansible.builtin.command:
+        argv:
+          - resolvectl
+          - --legend=no
+          - query
+          - "{{ guest_network_dns_test_name }}"
+      changed_when: false
+      register: guest_network_dns_query
+      retries: 6
+      delay: 2
+      until: guest_network_dns_query.rc == 0
+      when: guest_network_dns_test_name | length > 0

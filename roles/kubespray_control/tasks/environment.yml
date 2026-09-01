@@ -1,0 +1,30 @@
+---
+- name: Set Kubespray deployment environment
+  ansible.builtin.set_fact:
+    kubespray_control_deploy_environment: >-
+      {{
+        {
+          kubespray_control_become_password_env_var: kubespray_control_become_password,
+          'ANSIBLE_LOG_PATH': kubespray_control_deploy_log_file,
+          'ANSIBLE_CACHE_PLUGIN_CONNECTION': kubespray_control_fact_cache_dir
+        }
+      }}
+  no_log: true
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+
+- name: Set Kubespray reset environment
+  ansible.builtin.set_fact:
+    kubespray_control_reset_environment: >-
+      {{
+        {
+          kubespray_control_become_password_env_var: kubespray_control_become_password,
+          'ANSIBLE_LOG_PATH': kubespray_control_reset_log_file,
+          'ANSIBLE_CACHE_PLUGIN_CONNECTION': kubespray_control_fact_cache_dir
+        }
+      }}
+  no_log: true
+  when:
+    - kubespray_control_enable_reset_playbook_run | bool
+    - kubespray_control_enable_cluster_reset | bool

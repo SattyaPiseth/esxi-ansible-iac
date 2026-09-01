@@ -1,0 +1,7 @@
+---
+- name: Wait for guest connection
+  ansible.builtin.wait_for_connection:
+    delay: "{{ vm_wait_delay }}"
+    timeout: "{{ vm_wait_timeout }}"
+    connect_timeout: "{{ vm_wait_connect_timeout }}"
+    sleep: "{{ vm_wait_sleep }}"

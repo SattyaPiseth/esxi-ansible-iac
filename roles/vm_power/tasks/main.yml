@@ -1,0 +1,35 @@
+---
+- name: Validate VM power target
+  ansible.builtin.assert:
+    that:
+      - vm_power_name is defined
+      - vm_power_name | string | trim | length > 0
+    fail_msg: "Pass an explicit VM target with -e vm_power_name=<name>."
+
+- name: Validate VM power state
+  ansible.builtin.assert:
+    that:
+      - vm_power_state is defined
+      - vm_power_state in esxi_allowed_power_states
+    fail_msg: "Invalid vm_power_state '{{ vm_power_state | default('undefined') }}'. Allowed values: {{ esxi_allowed_power_states }}"
+    success_msg: "VM power state '{{ vm_power_state }}' is valid."
+
+- name: Change VM power state
+  vmware.vmware.vm_powerstate:
+    hostname: "{{ esxi_hostname }}"
+    username: "{{ esxi_username }}"
+    password: "{{ esxi_password }}"
+    validate_certs: "{{ esxi_validate_certs }}"
+    datacenter: "{{ vm_power_datacenter | default(esxi_datacenter) }}"
+    folder: "{{ vm_power_folder | default(esxi_default_folder) }}"
+    name: "{{ vm_power_name }}"
+    state: "{{ vm_power_state }}"
+  no_log: true
+  register: vm_power_result
+
+- name: Show VM power result
+  ansible.builtin.debug:
+    msg:
+      - "VM '{{ vm_power_name }}' power operation completed."
+      - "Requested state: {{ vm_power_state }}"
+      - "Changed: {{ vm_power_result.changed | default(false) }}"

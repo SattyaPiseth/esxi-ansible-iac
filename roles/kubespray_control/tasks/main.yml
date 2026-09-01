@@ -1,0 +1,30 @@
+---
+- name: Validate Kubespray control node
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Install Kubespray control packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Configure Kubespray runtime
+  ansible.builtin.import_tasks: runtime.yml
+
+- name: Run Kubespray preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Prepare Kubespray paths
+  ansible.builtin.import_tasks: paths.yml
+
+- name: Configure Kubespray execution environment
+  ansible.builtin.import_tasks: environment.yml
+
+- name: Run Kubespray deployment
+  ansible.builtin.import_tasks: deploy.yml
+
+- name: Run Kubespray reset
+  ansible.builtin.import_tasks: reset.yml
+
+- name: Manage Kubespray artifacts
+  ansible.builtin.import_tasks: artifacts.yml
+
+- name: Reconcile Kubespray health integrations
+  ansible.builtin.import_tasks: health.yml

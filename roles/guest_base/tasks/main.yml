@@ -1,0 +1,15 @@
+---
+- name: Validate guest base inputs
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Configure guest base packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Configure guest base network
+  ansible.builtin.import_tasks: network.yml
+
+- name: Configure guest base time
+  ansible.builtin.import_tasks: time.yml
+
+- name: Configure guest base SSH
+  ansible.builtin.import_tasks: ssh.yml

@@ -1,0 +1,389 @@
+---
+- name: Validate MetalLB pool inputs
+  ansible.builtin.assert:
+    that:
+      - kubespray_inventory_metallb_ip_range is sequence
+      - kubespray_inventory_metallb_ip_range is not string
+      - kubespray_inventory_metallb_ip_range | length > 0
+    fail_msg: "Set kubespray_inventory_metallb_ip_range to one or more free LAN ranges before applying MetalLB pools."
+
+- name: Check Kubespray client kubeconfig
+  ansible.builtin.stat:
+    path: "{{ kubespray_metallb_kubeconfig }}"
+  register: kubespray_metallb_kubeconfig_stat
+
+- name: Validate Kubespray client kubeconfig
+  ansible.builtin.assert:
+    that:
+      - kubespray_metallb_kubeconfig_stat.stat.exists
+      - kubespray_metallb_kubeconfig_stat.stat.isreg
+      - kubespray_metallb_kubeconfig_stat.stat.readable
+    fail_msg: >-
+      {{ kubespray_metallb_kubeconfig }} is missing or unreadable. Re-run
+      playbooks/09-kubespray-deploy.yml so Kubespray can regenerate the local
+      client artifacts cleanly.
+
+- name: Wait for MetalLB validating webhook CA bundle
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['get', 'validatingwebhookconfiguration',
+           'metallb-webhook-configuration', '-o', 'json']
+      }}
+  changed_when: false
+  failed_when: false
+  register: kubespray_metallb_webhook_configuration
+  retries: 10
+  delay: 6
+  until: >-
+    kubespray_metallb_webhook_configuration.rc == 0
+    and kubespray_metallb_webhook_configuration.stdout | length > 0
+    and (kubespray_metallb_webhook_configuration.stdout | from_json).webhooks is defined
+    and (kubespray_metallb_webhook_configuration.stdout | from_json).webhooks | length > 0
+    and (
+      (kubespray_metallb_webhook_configuration.stdout | from_json).webhooks
+      | map(attribute='clientConfig')
+      | map(attribute='caBundle')
+      | reject('equalto', '')
+      | list
+      | length
+    ) > 0
+
+- name: Wait for MetalLB controller rollout
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['rollout', 'status', 'deployment/controller',
+           '--namespace=metallb-system',
+           '--timeout=' + kubespray_metallb_controller_timeout]
+      }}
+  changed_when: false
+
+- name: Wait for MetalLB webhook endpoints
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['get', 'endpoints', 'webhook-service',
+           '--namespace=metallb-system', '-o', 'json']
+      }}
+  changed_when: false
+  failed_when: false
+  register: kubespray_metallb_webhook_endpoints
+  retries: 10
+  delay: 6
+  until: >-
+    kubespray_metallb_webhook_endpoints.rc == 0
+    and kubespray_metallb_webhook_endpoints.stdout | length > 0
+    and (kubespray_metallb_webhook_endpoints.stdout | from_json).subsets is defined
+    and (kubespray_metallb_webhook_endpoints.stdout | from_json).subsets | length > 0
+    and (kubespray_metallb_webhook_endpoints.stdout | from_json).subsets[0].addresses | default([]) | length > 0
+
+- name: Check MetalLB memberlist secret
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['get', 'secret', 'memberlist', '--namespace=metallb-system']
+      }}
+  changed_when: false
+  failed_when: false
+  register: kubespray_metallb_memberlist_secret
+
+- name: Create MetalLB memberlist secret
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['create', 'secret', 'generic', 'memberlist',
+           '--namespace=metallb-system',
+           '--from-literal=secretkey=' + kubespray_metallb_memberlist_key]
+      }}
+  changed_when: true
+  no_log: true
+  when: kubespray_metallb_memberlist_secret.rc != 0
+
+- name: Restart MetalLB speaker pods after memberlist secret creation
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['rollout', 'restart', 'daemonset/speaker',
+           '--namespace=metallb-system']
+      }}
+  changed_when: true
+  when: kubespray_metallb_memberlist_secret.rc != 0
+
+- name: Restart MetalLB controller after memberlist secret creation
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['rollout', 'restart', 'deployment/controller',
+           '--namespace=metallb-system']
+      }}
+  changed_when: true
+  when: kubespray_metallb_memberlist_secret.rc != 0
+
+- name: Wait for MetalLB controller rollout after restart
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['rollout', 'status', 'deployment/controller',
+           '--namespace=metallb-system',
+           '--timeout=' + kubespray_metallb_controller_timeout]
+      }}
+  changed_when: false
+  when: kubespray_metallb_memberlist_secret.rc != 0
+
+- name: Wait for MetalLB webhook endpoints after restart
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['get', 'endpoints', 'webhook-service',
+           '--namespace=metallb-system', '-o', 'json']
+      }}
+  changed_when: false
+  failed_when: false
+  register: kubespray_metallb_webhook_endpoints_after_restart
+  retries: 10
+  delay: 6
+  until: >-
+    kubespray_metallb_webhook_endpoints_after_restart.rc == 0
+    and kubespray_metallb_webhook_endpoints_after_restart.stdout | length > 0
+    and (kubespray_metallb_webhook_endpoints_after_restart.stdout | from_json).subsets is defined
+    and (kubespray_metallb_webhook_endpoints_after_restart.stdout | from_json).subsets | length > 0
+    and (kubespray_metallb_webhook_endpoints_after_restart.stdout | from_json).subsets[0].addresses | default([]) | length > 0
+  when: kubespray_metallb_memberlist_secret.rc != 0
+
+- name: Wait for MetalLB speaker rollout
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['rollout', 'status', 'daemonset/speaker',
+           '--namespace=metallb-system',
+           '--timeout=' + kubespray_metallb_controller_timeout]
+      }}
+  changed_when: false
+
+- name: Create MetalLB pool manifest
+  ansible.builtin.template:
+    src: metallb_pool.yaml.j2
+    dest: "{{ kubespray_metallb_manifest_file }}"
+    mode: "0644"
+
+- name: Verify MetalLB webhook is responding
+  block:
+    - name: Run MetalLB pool server-side dry-run
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['apply', '--dry-run=server', '--validate=true',
+               '--filename', kubespray_metallb_manifest_file]
+          }}
+      changed_when: false
+      register: kubespray_metallb_webhook_dry_run
+      retries: 10
+      delay: 10
+      until: kubespray_metallb_webhook_dry_run.rc == 0
+  rescue:
+    - name: Read MetalLB webhook service
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'service', 'webhook-service',
+               '--namespace=metallb-system', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_webhook_service_debug
+
+    - name: Read MetalLB webhook endpoints
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'endpoints', 'webhook-service',
+               '--namespace=metallb-system', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_webhook_endpoints_debug
+
+    - name: Read MetalLB pods
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'pods', '--namespace=metallb-system', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_pods_debug
+
+    - name: Read kube-proxy pods
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'pods', '--namespace=kube-system',
+               '--selector=k8s-app=kube-proxy', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_kube_proxy_debug
+
+    - name: Read MetalLB controller logs
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['logs', '--namespace=metallb-system',
+               'deployment/controller', '--tail=80']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_controller_logs_debug
+
+    - name: Fail with MetalLB webhook diagnostics
+      ansible.builtin.fail:
+        msg: |-
+          MetalLB validation webhook is not reachable from the Kubernetes API server.
+          This usually indicates kube-proxy/service networking on the control-plane path,
+          not invalid IPAddressPool YAML.
+
+          dry-run stderr:
+          {{ kubespray_metallb_webhook_dry_run.stderr | default('') }}
+
+          webhook service:
+          {{ kubespray_metallb_webhook_service_debug.stdout | default('') }}
+
+          webhook endpoints:
+          {{ kubespray_metallb_webhook_endpoints_debug.stdout | default('') }}
+
+          MetalLB pods:
+          {{ kubespray_metallb_pods_debug.stdout | default('') }}
+
+          kube-proxy pods:
+          {{ kubespray_metallb_kube_proxy_debug.stdout | default('') }}
+
+          MetalLB controller logs:
+          {{ kubespray_metallb_controller_logs_debug.stdout | default('') }}
+
+- name: Apply MetalLB pool manifest
+  ansible.builtin.command:
+    argv: >-
+      {{
+        kubespray_metallb_kubectl_argv
+        + ['apply', '--filename', kubespray_metallb_manifest_file]
+      }}
+  changed_when: >-
+    ' created' in kubespray_metallb_apply_result.stdout
+    or ' configured' in kubespray_metallb_apply_result.stdout
+  register: kubespray_metallb_apply_result
+  retries: "{{ kubespray_metallb_apply_retries }}"
+  delay: "{{ kubespray_metallb_apply_delay }}"
+  until: kubespray_metallb_apply_result.rc == 0
+
+- name: Collect MetalLB investigation details
+  when: kubespray_metallb_debug | bool
+  block:
+    - name: Read MetalLB service and endpoint state
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'service,endpoints,endpointslices',
+               '--namespace=metallb-system', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_debug_services
+
+    - name: Read MetalLB pod state
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'pods', '--namespace=metallb-system', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_debug_pods
+
+    - name: Read MetalLB pool resources
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'ipaddresspools,l2advertisements',
+               '--namespace=metallb-system', '-o', 'wide']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_debug_pools
+
+    - name: Read recent MetalLB warning events
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['get', 'events', '--namespace=metallb-system',
+               '--field-selector=type=Warning', '--sort-by=.lastTimestamp']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_debug_events
+
+    - name: Read MetalLB controller logs
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['logs', '--namespace=metallb-system',
+               'deployment/controller', '--tail=' ~ kubespray_metallb_debug_log_tail]
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_debug_controller_logs
+
+    - name: Read MetalLB speaker logs
+      ansible.builtin.command:
+        argv: >-
+          {{
+            kubespray_metallb_kubectl_argv
+            + ['logs', '--namespace=metallb-system',
+               '--selector=app=metallb,component=speaker',
+               '--tail=' ~ kubespray_metallb_debug_log_tail, '--prefix=true']
+          }}
+      changed_when: false
+      failed_when: false
+      register: kubespray_metallb_debug_speaker_logs
+
+    - name: Show MetalLB investigation details
+      ansible.builtin.debug:
+        msg: |-
+          MetalLB service and endpoints:
+          {{ kubespray_metallb_debug_services.stdout | default('') }}
+
+          MetalLB pods:
+          {{ kubespray_metallb_debug_pods.stdout | default('') }}
+
+          MetalLB pools:
+          {{ kubespray_metallb_debug_pools.stdout | default('') }}
+
+          MetalLB warning events:
+          {{ kubespray_metallb_debug_events.stdout | default('') }}
+
+          MetalLB controller logs:
+          {{ kubespray_metallb_debug_controller_logs.stdout | default('') }}
+
+          MetalLB speaker logs:
+          {{ kubespray_metallb_debug_speaker_logs.stdout | default('') }}

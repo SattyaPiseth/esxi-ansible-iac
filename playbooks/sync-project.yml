@@ -1,0 +1,65 @@
+---
+- name: Validate project synchronization target
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Require managed target host
+      ansible.builtin.assert:
+        that:
+          - target_host is defined
+          - target_host in groups['linux_vms']
+        fail_msg: "Set target_host to one inventory host from the linux_vms group."
+
+    - name: Require project synchronization key configuration
+      ansible.builtin.assert:
+        that:
+          - hostvars[target_host].ansible_ssh_private_key_file is defined
+          - hostvars[target_host].ansible_ssh_private_key_file | length > 0
+        fail_msg: >-
+          Configure ansible_ssh_private_key_file for the synchronization target.
+
+    - name: Validate project synchronization private key
+      ansible.builtin.stat:
+        path: "{{ hostvars[target_host].ansible_ssh_private_key_file }}"
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+      register: project_sync_private_key
+      failed_when: >-
+        not project_sync_private_key.stat.exists
+        or not (project_sync_private_key.stat.isreg | default(false))
+        or project_sync_private_key.stat.mode not in ['0400', '0600']
+
+- name: Synchronize project to managed guest
+  hosts: "{{ target_host | default('localhost') }}"
+  gather_facts: false
+  vars:
+    project_sync_destination: "/home/{{ ansible_user }}/esxi-ansible-iac/"
+    ansible_password: null
+  tasks:
+    - name: Synchronize project files
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../"
+        dest: "{{ project_sync_destination }}"
+        mode: push
+        archive: true
+        owner: false
+        group: false
+        compress: true
+        delete: false
+        private_key: "{{ ansible_ssh_private_key_file }}"
+        use_ssh_args: true
+        verify_host: true
+        rsync_opts:
+          - "--exclude=.ansible/"
+          - "--exclude=.git/"
+          - "--exclude=.idea/"
+          - "--exclude=.venv/"
+          - "--exclude=.generated/"
+          - "--exclude=__pycache__/"
+          - "--exclude=*.pyc"
+          - "--exclude=*.retry"
+          - "--exclude=*.log"
+          - "--exclude=*.pkrvars.hcl"
+          - "--exclude=.vaultpass"
+      delegate_to: localhost

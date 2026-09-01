@@ -1,0 +1,57 @@
+---
+- name: Prepare local Kubespray deployment paths
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+  block:
+    - name: Remove stale Kubespray artifacts before deploy
+      ansible.builtin.file:
+        path: "{{ kubespray_control_artifacts_dir }}"
+        state: absent
+      become: true
+      when: kubespray_control_enable_artifact_cleanup_before_deploy | bool
+            and kubespray_control_cluster_playbook_tags | length == 0
+
+    - name: Ensure Kubespray local runtime directories are owned by the operator
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_facts.user_id }}"
+        group: "{{ ansible_facts.user_gid }}"
+        mode: "0755"
+      loop:
+        - "{{ kubespray_control_artifacts_dir }}"
+        - "{{ kubespray_control_fact_cache_dir }}"
+      become: true
+
+    - name: Initialize Kubespray deployment log
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ kubespray_control_deploy_log_file }}"
+        owner: "{{ ansible_facts.user_id }}"
+        group: "{{ ansible_facts.user_gid }}"
+        mode: "0600"
+      become: true
+
+- name: Prepare local Kubespray reset paths
+  when:
+    - kubespray_control_enable_reset_playbook_run | bool
+    - kubespray_control_enable_cluster_reset | bool
+  block:
+    - name: Ensure Kubespray reset runtime directory is owned by the operator
+      ansible.builtin.file:
+        path: "{{ kubespray_control_fact_cache_dir }}"
+        state: directory
+        owner: "{{ ansible_facts.user_id }}"
+        group: "{{ ansible_facts.user_gid }}"
+        mode: "0755"
+      become: true
+
+    - name: Initialize Kubespray reset log
+      ansible.builtin.copy:
+        content: ""
+        dest: "{{ kubespray_control_reset_log_file }}"
+        owner: "{{ ansible_facts.user_id }}"
+        group: "{{ ansible_facts.user_gid }}"
+        mode: "0600"
+      become: true

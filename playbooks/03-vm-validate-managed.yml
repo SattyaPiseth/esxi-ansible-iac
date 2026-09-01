@@ -1,0 +1,46 @@
+---
+- name: Validate managed VM inventory on ESXi
+  hosts: vm_esxi_8.0
+  gather_facts: false
+
+  roles:
+    - esxi_validate
+
+  tasks:
+    - name: Validate managed VM list
+      ansible.builtin.assert:
+        that:
+          - managed_vm_names is defined
+          - managed_vm_names is sequence
+          - managed_vm_names is not string
+          - managed_vm_names | length > 0
+          - managed_vm_names | reject('string') | list | length == 0
+          - managed_vm_names | map('trim') | reject('equalto', '') | list | length == managed_vm_names | length
+          - managed_vm_names | unique | list | length == managed_vm_names | length
+        fail_msg: "managed_vm_names must be a non-empty unique list of VM names."
+
+    - name: Read ESXi VM inventory
+      community.vmware.vmware_vm_info:
+        hostname: "{{ esxi_hostname }}"
+        username: "{{ esxi_username }}"
+        password: "{{ esxi_password }}"
+        validate_certs: "{{ esxi_validate_certs }}"
+      no_log: true
+      register: managed_vm_info
+
+    - name: Validate each managed VM resolves exactly once
+      ansible.builtin.assert:
+        that:
+          - >-
+            managed_vm_info.virtual_machines
+            | selectattr('guest_name', 'equalto', managed_vm_name)
+            | list
+            | length == 1
+        fail_msg: "Managed VM '{{ managed_vm_name }}' must exist exactly once on ESXi."
+      loop: "{{ managed_vm_names }}"
+      loop_control:
+        loop_var: managed_vm_name
+
+    - name: Show validated managed VM names
+      ansible.builtin.debug:
+        msg: "Validated managed VMs: {{ managed_vm_names }}"

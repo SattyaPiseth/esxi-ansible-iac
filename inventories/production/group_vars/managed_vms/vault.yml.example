@@ -1,0 +1,5 @@
+---
+# Copy this file to vault.yml and encrypt it with ansible-vault.
+# The real vault.yml is ignored by git.
+ansible_password: "ROTATED_GUEST_PASSWORD"
+ansible_become_password: "{{ ansible_password }}"

@@ -1,0 +1,9 @@
+---
+control_node_prerequisites_python_apt_packages:
+  - python3
+  - python3-venv
+
+control_node_prerequisites_vmware_venv_dir: "{{ playbook_dir }}/../.venv/vmware"
+control_node_prerequisites_vmware_python_packages:
+  - pyvmomi
+  - requests

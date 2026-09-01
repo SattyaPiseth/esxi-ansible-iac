@@ -1,0 +1,135 @@
+---
+- name: Power VMs and discover current guest IPs
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  vars:
+    discovered_guest_group: discovered_managed_vms
+    vm_discovery_scope: "{{ scope | default('single') }}"
+    vm_discovery_targets: >-
+      {{
+        managed_vm_names
+        if vm_discovery_scope == 'all'
+        else [vm_power_name]
+      }}
+    vm_power_state: powered-on
+  roles:
+    - esxi_validate
+  tasks:
+    - name: Validate VM discovery scope
+      ansible.builtin.assert:
+        that:
+          - vm_discovery_scope in ['single', 'all']
+        fail_msg: "Set scope to either 'single' or 'all'."
+
+    - name: Validate VM discovery target list
+      ansible.builtin.assert:
+        that:
+          - vm_discovery_targets is sequence
+          - vm_discovery_targets is not string
+          - vm_discovery_targets | length > 0
+          - vm_power_state == 'powered-on'
+          - guest_credential_source is defined
+          - guest_credential_source in hostvars
+          - hostvars[guest_credential_source].ansible_user is defined
+          - hostvars[guest_credential_source].ansible_password is defined or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
+          - hostvars[guest_credential_source].guest_become_ready | bool
+        fail_msg: "Use this playbook only with vm_power_state=powered-on, a non-empty VM discovery target list, and a valid guest_credential_source."
+
+    - name: Apply requested power state to each selected VM
+      ansible.builtin.include_role:
+        name: vm_power
+      vars:
+        vm_power_name: "{{ discovery_vm_name }}"
+      loop: "{{ vm_discovery_targets }}"
+      loop_control:
+        loop_var: discovery_vm_name
+
+    - name: Wait for VMware Tools to report each VM IP
+      community.vmware.vmware_vm_info:
+        hostname: "{{ esxi_hostname }}"
+        username: "{{ esxi_username }}"
+        password: "{{ esxi_password }}"
+        validate_certs: "{{ esxi_validate_certs }}"
+      no_log: true
+      register: discovered_vm_info_result
+      until:
+        - >-
+          discovered_vm_info_result.virtual_machines
+          | selectattr('guest_name', 'equalto', discovery_vm_name)
+          | list
+          | length == 1
+        - >-
+          discovered_vm_info_result.virtual_machines
+          | selectattr('guest_name', 'equalto', discovery_vm_name)
+          | map(attribute='ip_address')
+          | select('defined')
+          | reject('equalto', '')
+          | list
+          | length > 0
+      retries: 60
+      delay: 10
+      loop: "{{ vm_discovery_targets }}"
+      loop_control:
+        loop_var: discovery_vm_name
+
+    - name: Add discovered guests to in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ item.discovery_vm_name }}"
+        groups: "{{ discovered_guest_group }}"
+        ansible_host: >-
+          {{
+            item.virtual_machines
+            | selectattr('guest_name', 'equalto', item.discovery_vm_name)
+            | map(attribute='ip_address')
+            | select('defined')
+            | reject('equalto', '')
+            | list
+            | first
+          }}
+        ansible_user: "{{ hostvars[guest_credential_source].ansible_user }}"
+        ansible_password: "{{ hostvars[guest_credential_source].ansible_password | default(omit) }}"
+        ansible_ssh_private_key_file: "{{ hostvars[guest_credential_source].ansible_ssh_private_key_file | default(omit) }}"
+        ansible_become: "{{ hostvars[guest_credential_source].ansible_become | default(true) }}"
+        ansible_become_method: "{{ hostvars[guest_credential_source].ansible_become_method | default('sudo') }}"
+        ansible_become_password: "{{ hostvars[guest_credential_source].ansible_become_password | default(omit) }}"
+        ansible_python_interpreter: "{{ hostvars[guest_credential_source].ansible_python_interpreter | default('/usr/bin/python3') }}"
+      changed_when: false
+      loop: "{{ discovered_vm_info_result.results }}"
+      loop_control:
+        label: "{{ item.discovery_vm_name }}"
+
+    - name: Show discovered guest endpoints
+      ansible.builtin.debug:
+        msg: >-
+          VM '{{ item.discovery_vm_name }}' current guest IP is
+          {{
+            item.virtual_machines
+            | selectattr('guest_name', 'equalto', item.discovery_vm_name)
+            | map(attribute='ip_address')
+            | select('defined')
+            | reject('equalto', '')
+            | list
+            | first
+          }}
+      loop: "{{ discovered_vm_info_result.results }}"
+      loop_control:
+        label: "{{ item.discovery_vm_name }}"
+
+- name: Prepare SSH known_hosts for discovered guests
+  hosts: discovered_managed_vms
+  gather_facts: false
+  roles:
+    - ssh_known_hosts
+
+- name: Wait for discovered guest SSH
+  hosts: discovered_managed_vms
+  gather_facts: false
+  roles:
+    - vm_wait
+
+- name: Bootstrap discovered Linux guests
+  hosts: discovered_managed_vms
+  gather_facts: true
+  become: true
+  roles:
+    - guest_base

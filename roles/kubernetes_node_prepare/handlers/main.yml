@@ -1,0 +1,6 @@
+---
+- name: Apply Kubernetes sysctl settings
+  ansible.builtin.command:
+    cmd: /sbin/sysctl --system
+  become: true
+  changed_when: true

@@ -1,0 +1,296 @@
+- name: Read MetalLB address pools
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - ipaddresspools.metallb.io
+      - --namespace=metallb-system
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_metallb_pools
+  when: kubernetes_health_validate_metallb_address_pools | bool
+
+- name: Read MetalLB L2 advertisements
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - l2advertisements.metallb.io
+      - --namespace=metallb-system
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_metallb_l2_advertisements
+  when: kubernetes_health_validate_metallb_address_pools | bool
+
+- name: Validate MetalLB address pool resources
+  vars:
+    kubernetes_health_metallb_addresses: >-
+      {{
+        (kubernetes_health_metallb_pools.stdout | from_json)['items']
+        | map(attribute='spec')
+        | map(attribute='addresses')
+        | flatten
+        | list
+      }}
+  ansible.builtin.assert:
+    that:
+      - (kubernetes_health_metallb_pools.stdout | from_json)['items'] | length > 0
+      - (kubernetes_health_metallb_l2_advertisements.stdout | from_json)['items'] | length > 0
+      - kubespray_inventory_metallb_ip_range | default([]) | difference(kubernetes_health_metallb_addresses) | length == 0
+    fail_msg: >-
+      MetalLB is enabled, but the expected IPAddressPool/L2Advertisement
+      resources are missing or do not include the configured address ranges.
+  when: kubernetes_health_validate_metallb_address_pools | bool
+
+- name: Read MetalLB webhook service for service network validation
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - service
+      - webhook-service
+      - --namespace=metallb-system
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_metallb_webhook_service
+  when: kubernetes_health_validate_metallb_controller_reachability | bool
+
+- name: Select MetalLB webhook service address
+  ansible.builtin.set_fact:
+    kubernetes_health_metallb_webhook_cluster_ip: >-
+      {{
+        (kubernetes_health_metallb_webhook_service.stdout | from_json).spec.clusterIP
+      }}
+  when: kubernetes_health_validate_metallb_controller_reachability | bool
+
+- name: Validate MetalLB webhook service reachability from control-plane nodes
+  ansible.builtin.uri:
+    url: "https://{{ kubernetes_health_metallb_webhook_cluster_ip }}:443/"
+    method: GET
+    validate_certs: false
+    use_proxy: false
+    timeout: 5
+    status_code:
+      - 200
+      - 400
+      - 404
+      - 405
+  delegate_to: "{{ item }}"
+  loop: "{{ kubespray_inventory_control_plane_vm_names | unique | list }}"
+  when:
+    - kubernetes_health_validate_metallb_controller_reachability | bool
+    - kubernetes_health_metallb_webhook_cluster_ip | length > 0
+  loop_control:
+    label: "{{ item }} -> webhook-service {{ kubernetes_health_metallb_webhook_cluster_ip }}:443"
+
+- name: Validate temporary LoadBalancer allocation
+  when: kubernetes_health_enable_lb_smoke_test | bool
+  block:
+    - name: Remove previous LoadBalancer smoke test service
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - service
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_delete_service.stdout"
+      register: kubernetes_health_lb_smoke_delete_service
+
+    - name: Remove previous LoadBalancer smoke test endpoint
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - endpoints
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_delete_endpoint.stdout"
+      register: kubernetes_health_lb_smoke_delete_endpoint
+
+    - name: Remove previous LoadBalancer smoke test endpoint slices
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - endpointslices.discovery.k8s.io
+          - -l
+          - "kubernetes.io/service-name={{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_delete_endpoint_slices.stdout"
+      register: kubernetes_health_lb_smoke_delete_endpoint_slices
+
+    - name: Wait for previous LoadBalancer smoke test endpoint removal
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - get
+          - endpoints
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+      changed_when: false
+      failed_when: false
+      register: kubernetes_health_lb_smoke_endpoint_absent
+      retries: 12
+      delay: 5
+      until: kubernetes_health_lb_smoke_endpoint_absent.rc != 0
+
+    - name: Remove previous LoadBalancer smoke test deployment
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - deployment
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_delete_deployment.stdout"
+      register: kubernetes_health_lb_smoke_delete_deployment
+
+    - name: Create LoadBalancer smoke test deployment
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - create
+          - deployment
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --image={{ kubernetes_health_lb_smoke_test_image }}
+      changed_when: true
+
+    - name: Wait for LoadBalancer smoke test deployment
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - rollout
+          - status
+          - deployment/{{ kubernetes_health_lb_smoke_test_name }}
+          - --timeout={{ kubernetes_health_rollout_timeout }}
+      changed_when: false
+
+    - name: Expose LoadBalancer smoke test service
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - expose
+          - deployment
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --type=LoadBalancer
+          - --port=80
+      changed_when: true
+
+    - name: Wait for LoadBalancer external IP
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - get
+          - service
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - -o
+          - jsonpath={.status.loadBalancer.ingress[0].ip}
+      changed_when: false
+      register: kubernetes_health_lb_smoke_external_ip
+      retries: "{{ kubernetes_health_lb_smoke_test_timeout // 5 }}"
+      delay: 5
+      until: kubernetes_health_lb_smoke_external_ip.stdout | trim | length > 0
+
+    - name: Validate LoadBalancer external IP responds
+      ansible.builtin.uri:
+        url: "http://{{ kubernetes_health_lb_smoke_external_ip.stdout | trim }}/"
+        method: GET
+        status_code: 200
+        return_content: false
+        use_proxy: false
+        timeout: 10
+
+  always:
+    - name: Remove LoadBalancer smoke test service
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - service
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_cleanup_service.stdout"
+      register: kubernetes_health_lb_smoke_cleanup_service
+
+    - name: Remove LoadBalancer smoke test endpoint
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - endpoints
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_cleanup_endpoint.stdout"
+      register: kubernetes_health_lb_smoke_cleanup_endpoint
+
+    - name: Remove LoadBalancer smoke test endpoint slices
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - endpointslices.discovery.k8s.io
+          - -l
+          - "kubernetes.io/service-name={{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_cleanup_endpoint_slices.stdout"
+      register: kubernetes_health_lb_smoke_cleanup_endpoint_slices
+
+    - name: Remove LoadBalancer smoke test deployment
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - deployment
+          - "{{ kubernetes_health_lb_smoke_test_name }}"
+          - --ignore-not-found=true
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_cleanup_deployment.stdout"
+      register: kubernetes_health_lb_smoke_cleanup_deployment
+
+    - name: Remove LoadBalancer smoke test warning events
+      ansible.builtin.command:
+        argv:
+          - "{{ kubernetes_health_kubectl }}"
+          - --kubeconfig
+          - "{{ kubernetes_health_kubeconfig }}"
+          - delete
+          - event
+          - --field-selector
+          - "involvedObject.name={{ kubernetes_health_lb_smoke_test_name }}"
+      changed_when: "'deleted' in kubernetes_health_lb_smoke_cleanup_events.stdout"
+      failed_when: false
+      register: kubernetes_health_lb_smoke_cleanup_events

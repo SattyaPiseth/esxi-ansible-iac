@@ -1,0 +1,38 @@
+---
+longhorn_node_prepare_packages:
+  - open-iscsi
+  - nfs-common
+  - cryptsetup
+  - dmsetup
+  - util-linux
+  - grep
+  - gawk
+
+longhorn_node_prepare_kernel_modules:
+  - iscsi_tcp
+  - dm_crypt
+  - nfs
+
+longhorn_node_prepare_required_commands:
+  - bash
+  - curl
+  - findmnt
+  - grep
+  - awk
+  - blkid
+  - lsblk
+  - iscsiadm
+  - cryptsetup
+  - dmsetup
+
+longhorn_node_prepare_enable_multipathd_disabled: false
+longhorn_node_prepare_multipath_units:
+  - multipathd.service
+  - multipathd.socket
+
+longhorn_node_prepare_data_path: /var/lib/longhorn
+longhorn_node_prepare_data_device: ""
+longhorn_node_prepare_data_filesystem: ext4
+longhorn_node_prepare_data_mount_options: defaults
+longhorn_node_prepare_has_data_disk: false
+longhorn_node_prepare_enable_disk_format: false

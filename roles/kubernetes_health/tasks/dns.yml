@@ -1,0 +1,11 @@
+- name: Validate NodeLocalDNS health on every node
+  ansible.builtin.uri:
+    url: >-
+      http://{{ kubespray_inventory_nodelocaldns_ip }}:{{ kubespray_inventory_nodelocaldns_health_port }}/health
+    method: GET
+    status_code: 200
+    return_content: false
+    use_proxy: false
+  delegate_to: "{{ item }}"
+  loop: "{{ (kubespray_inventory_control_plane_vm_names + kubespray_inventory_worker_vm_names) | unique | list }}"
+  when: kubespray_inventory_enable_nodelocaldns | bool

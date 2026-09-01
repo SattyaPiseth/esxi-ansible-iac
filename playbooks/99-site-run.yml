@@ -1,0 +1,21 @@
+---
+- name: Validate ESXi
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  roles:
+    - esxi_validate
+
+- name: Show ESXi facts
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  roles:
+    - esxi_facts
+
+- name: Power selected VM
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  roles:
+    - vm_power
+
+- name: Prepare Linux guests
+  ansible.builtin.import_playbook: 99-guest-site.yml

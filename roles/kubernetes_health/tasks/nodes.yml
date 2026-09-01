@@ -1,0 +1,53 @@
+- name: Wait for all registered nodes to be ready
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - wait
+      - --for=condition=Ready
+      - node
+      - --all
+      - "--timeout={{ kubernetes_health_rollout_timeout }}"
+  changed_when: false
+
+- name: Read registered Kubernetes nodes
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - nodes
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_nodes
+
+- name: Build expected Kubernetes node names
+  ansible.builtin.set_fact:
+    kubernetes_health_expected_node_names: >-
+      {{
+        (kubernetes_health_expected_node_names | default([]))
+        + [
+          kubespray_inventory_node_names[item]
+          | default(item | replace('_', '-') | replace('.', '-'))
+        ]
+      }}
+  loop: "{{ (kubespray_inventory_control_plane_vm_names + kubespray_inventory_worker_vm_names) | unique | list }}"
+
+- name: Validate registered Kubernetes nodes
+  vars:
+    kubernetes_health_registered_node_names: >-
+      {{
+        (kubernetes_health_nodes.stdout | from_json)['items']
+        | map(attribute='metadata')
+        | map(attribute='name')
+        | list
+      }}
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_expected_node_names | difference(kubernetes_health_registered_node_names) | length == 0
+      - kubernetes_health_registered_node_names | difference(kubernetes_health_expected_node_names) | length == 0
+    fail_msg: >-
+      Registered Kubernetes nodes do not match the rendered Kubespray inventory.

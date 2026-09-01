@@ -1,0 +1,69 @@
+---
+- name: Delete selected VMs from standalone ESXi
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  vars:
+    vm_delete_scope: "{{ scope | default('single') }}"
+    vm_delete_targets: >-
+      {{
+        managed_vm_names
+        if vm_delete_scope == 'all'
+        else [vm_delete_name]
+      }}
+    vm_delete_enable_all_confirmation: false
+    vm_delete_all_confirmation_phrase: ""
+    vm_delete_required_all_confirmation_phrase: DELETE_ALL_MANAGED_VMS
+
+  roles:
+    - esxi_validate
+
+  tasks:
+    - name: Validate VM delete scope
+      ansible.builtin.assert:
+        that:
+          - vm_delete_scope in ['single', 'all']
+        fail_msg: "Set scope to either 'single' or 'all'."
+
+    - name: Validate VM delete target list
+      ansible.builtin.assert:
+        that:
+          - vm_delete_targets is sequence
+          - vm_delete_targets is not string
+          - vm_delete_targets | length > 0
+          - vm_delete_targets | reject('string') | list | length == 0
+          - vm_delete_targets | map('trim') | reject('equalto', '') | list | length == vm_delete_targets | length
+          - vm_delete_targets | unique | list | length == vm_delete_targets | length
+        fail_msg: "Pass -e vm_delete_name=<name>, or use -e scope=all with managed_vm_names."
+
+    - name: Validate delete-all confirmation
+      ansible.builtin.assert:
+        that:
+          - >-
+            vm_delete_scope != 'all'
+            or (
+              vm_delete_enable_all_confirmation | bool
+              and vm_delete_all_confirmation_phrase == vm_delete_required_all_confirmation_phrase
+            )
+        fail_msg: >-
+          Batch VM deletion blocked. Pass -e scope=all
+          -e vm_delete_enable_all_confirmation=true
+          -e vm_delete_all_confirmation_phrase={{ vm_delete_required_all_confirmation_phrase }}.
+
+    - name: Delete selected VM
+      ansible.builtin.include_role:
+        name: vm_delete
+      vars:
+        vm_delete_name: "{{ vm_delete_targets | first }}"
+      when: vm_delete_scope == 'single'
+
+    - name: Delete each selected VM with batch confirmation
+      ansible.builtin.include_role:
+        name: vm_delete
+      vars:
+        vm_delete_name: "{{ delete_vm_name }}"
+        vm_delete_confirm: true
+        vm_delete_confirm_name: "{{ delete_vm_name }}"
+      loop: "{{ vm_delete_targets }}"
+      loop_control:
+        loop_var: delete_vm_name
+      when: vm_delete_scope == 'all'

@@ -1,0 +1,8 @@
+---
+- name: Verify Kubernetes cluster health
+  hosts: control_node
+  gather_facts: false
+
+  roles:
+    - control_plane_kubeconfig
+    - kubernetes_health

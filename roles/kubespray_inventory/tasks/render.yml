@@ -1,0 +1,48 @@
+---
+- name: Create generated Kubespray inventory directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  loop:
+    - "{{ kubespray_inventory_output_dir }}"
+    - "{{ kubespray_inventory_output_dir }}/group_vars/all"
+    - "{{ kubespray_inventory_output_dir }}/group_vars/k8s_cluster"
+
+- name: Render Kubespray inventory
+  ansible.builtin.template:
+    src: kubespray_inventory.ini.j2
+    dest: "{{ kubespray_inventory_output_dir }}/inventory.ini"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Render Kubespray all group variables
+  ansible.builtin.template:
+    src: all.yml.j2
+    dest: "{{ kubespray_inventory_output_dir }}/group_vars/all/all.yml"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Render Kubespray cluster variables
+  ansible.builtin.template:
+    src: k8s_cluster.yml.j2
+    dest: "{{ kubespray_inventory_output_dir }}/group_vars/k8s_cluster/k8s-cluster.yml"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Render Kubespray addons variables
+  ansible.builtin.template:
+    src: addons.yml.j2
+    dest: "{{ kubespray_inventory_output_dir }}/group_vars/k8s_cluster/addons.yml"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Show Kubespray inventory path
+  ansible.builtin.debug:
+    msg:
+      - "Kubespray inventory rendered to {{ kubespray_inventory_output_dir }}"
+      - >-
+        Use: ansible-playbook
+        -i {{ kubespray_inventory_output_dir }}/inventory.ini
+        cluster.yml -b --private-key ~/.ssh/esxi_ansible_ed25519

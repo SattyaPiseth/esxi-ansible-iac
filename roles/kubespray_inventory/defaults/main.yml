@@ -1,0 +1,52 @@
+---
+kubespray_inventory_output_dir: "{{ playbook_dir }}/../.generated/kubespray/{{ kubespray_cluster_name | default('production') }}"
+kubespray_inventory_control_plane_vm_names: "{{ kubespray_control_plane_vm_names | default([]) }}"
+kubespray_inventory_etcd_vm_names: >-
+  {{ kubespray_etcd_vm_names | default(kubespray_inventory_control_plane_vm_names) }}
+kubespray_inventory_worker_vm_names: "{{ kubespray_worker_vm_names | default([]) }}"
+kubespray_inventory_node_names: "{{ kubespray_node_names | default({}) }}"
+kubespray_inventory_ansible_user: >-
+  {{ kubespray_ansible_user | default(hostvars[guest_credential_source].ansible_user | default('sysadmin')) }}
+kubespray_inventory_become_password_env_var: "{{ kubespray_become_password_env_var | default('KUBESPRAY_BECOME_PASSWORD') }}"
+kubespray_inventory_network_plugin: "{{ kubespray_network_plugin | default('calico') }}"
+kubespray_inventory_container_manager: "{{ kubespray_container_manager | default('containerd') }}"
+kubespray_inventory_kube_proxy_mode: "{{ kubespray_kube_proxy_mode | default('ipvs') }}"
+kubespray_inventory_kube_proxy_metrics_bind_address: >-
+  {{ kubespray_kube_proxy_metrics_bind_address | default('127.0.0.1:10249') }}
+kubespray_inventory_enable_kube_vip: "{{ kubespray_enable_kube_vip | default(false) }}"
+kubespray_inventory_kube_vip_address: "{{ kubespray_kube_vip_address | default('') }}"
+kubespray_inventory_enable_kube_vip_arp: "{{ kubespray_enable_kube_vip_arp | default(true) }}"
+kubespray_inventory_enable_kube_vip_controlplane: "{{ kubespray_enable_kube_vip_controlplane | default(true) }}"
+kubespray_inventory_enable_kube_vip_services: "{{ kubespray_enable_kube_vip_services | default(false) }}"
+kubespray_inventory_enable_kube_vip_lb: "{{ kubespray_enable_kube_vip_lb | default(true) }}"
+kubespray_inventory_dns_mode: "{{ kubespray_dns_mode | default('coredns') }}"
+kubespray_inventory_enable_nodelocaldns: "{{ kubespray_enable_nodelocaldns | default(true) }}"
+kubespray_inventory_nodelocaldns_ip: "{{ kubespray_nodelocaldns_ip | default('169.254.25.10') }}"
+kubespray_inventory_nodelocaldns_health_port: "{{ kubespray_nodelocaldns_health_port | default(9254) }}"
+kubespray_inventory_enable_kubelet_server_certificate_rotation: >-
+  {{ kubespray_enable_kubelet_server_certificate_rotation | default(false) }}
+kubespray_inventory_kubelet_csr_approver_values: "{{ kubespray_kubelet_csr_approver_values | default({}) }}"
+kubespray_inventory_service_cidr: "{{ kubespray_service_cidr | default('10.233.0.0/18') }}"
+kubespray_inventory_pod_cidr: "{{ kubespray_pod_cidr | default('10.233.64.0/18') }}"
+kubespray_inventory_calico_datastore: "{{ kubespray_calico_datastore | default('kdd') }}"
+kubespray_inventory_calico_network_backend: "{{ kubespray_calico_network_backend | default('vxlan') }}"
+kubespray_inventory_calico_ipip_mode: "{{ kubespray_calico_ipip_mode | default('Never') }}"
+kubespray_inventory_calico_vxlan_mode: "{{ kubespray_calico_vxlan_mode | default('Always') }}"
+kubespray_inventory_enable_helm: "{{ kubespray_enable_helm | default(true) }}"
+kubespray_inventory_enable_metrics_server: "{{ kubespray_enable_metrics_server | default(true) }}"
+kubespray_inventory_enable_metrics_server_kubelet_insecure_tls: >-
+  {{ kubespray_enable_metrics_server_kubelet_insecure_tls | default(true) }}
+kubespray_inventory_enable_metrics_server_apiservice_insecure_skip_tls_verify: >-
+  {{ kubespray_enable_metrics_server_apiservice_insecure_skip_tls_verify | default(true) }}
+kubespray_inventory_metrics_server_limits_cpu: "{{ kubespray_metrics_server_limits_cpu | default('') }}"
+kubespray_inventory_metrics_server_limits_memory: "{{ kubespray_metrics_server_limits_memory | default('') }}"
+kubespray_inventory_metrics_server_requests_cpu: "{{ kubespray_metrics_server_requests_cpu | default('') }}"
+kubespray_inventory_metrics_server_requests_memory: "{{ kubespray_metrics_server_requests_memory | default('') }}"
+kubespray_inventory_enable_cert_manager: "{{ kubespray_enable_cert_manager | default(true) }}"
+kubespray_inventory_enable_argocd: "{{ kubespray_enable_argocd | default(false) }}"
+kubespray_inventory_enable_registry: "{{ kubespray_enable_registry | default(false) }}"
+kubespray_inventory_enable_local_path_provisioner: "{{ kubespray_enable_local_path_provisioner | default(false) }}"
+kubespray_inventory_local_path_storage_class: "{{ kubespray_local_path_storage_class | default('local-path') }}"
+kubespray_inventory_local_path_reclaim_policy: "{{ kubespray_local_path_reclaim_policy | default('Delete') }}"
+kubespray_inventory_enable_metallb: "{{ kubespray_enable_metallb | default(false) }}"
+kubespray_inventory_metallb_ip_range: "{{ kubespray_metallb_ip_range | default([]) }}"

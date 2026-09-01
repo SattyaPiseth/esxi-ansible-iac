@@ -1,0 +1,7 @@
+---
+- name: Prepare Ubuntu nodes for Kubernetes
+  hosts: managed_vms
+  gather_facts: false
+
+  roles:
+    - kubernetes_node_prepare

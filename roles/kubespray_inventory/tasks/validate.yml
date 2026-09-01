@@ -1,0 +1,158 @@
+---
+- name: Build Kubespray node list
+  ansible.builtin.set_fact:
+    kubespray_inventory_group_vm_names: >-
+      {{ kubespray_inventory_control_plane_vm_names
+         + kubespray_inventory_etcd_vm_names
+         + kubespray_inventory_worker_vm_names }}
+    kubespray_inventory_all_vm_names: >-
+      {{ (kubespray_inventory_control_plane_vm_names
+          + kubespray_inventory_etcd_vm_names
+          + kubespray_inventory_worker_vm_names) | unique | list }}
+
+- name: Validate Kubespray inventory inputs
+  ansible.builtin.assert:
+    that:
+      - managed_vm_names is defined
+      - kubespray_inventory_control_plane_vm_names is sequence
+      - kubespray_inventory_control_plane_vm_names is not string
+      - kubespray_inventory_control_plane_vm_names | length > 0
+      - kubespray_inventory_etcd_vm_names is sequence
+      - kubespray_inventory_etcd_vm_names is not string
+      - kubespray_inventory_etcd_vm_names | length >= 3
+      - kubespray_inventory_etcd_vm_names | length == (kubespray_inventory_etcd_vm_names | unique | list | length)
+      - kubespray_inventory_worker_vm_names is sequence
+      - kubespray_inventory_worker_vm_names is not string
+      - kubespray_inventory_worker_vm_names | length > 0
+      - kubespray_inventory_worker_vm_names | length == (kubespray_inventory_worker_vm_names | unique | list | length)
+      - kubespray_inventory_control_plane_vm_names | length == (kubespray_inventory_control_plane_vm_names | unique | list | length)
+      - kubespray_inventory_group_vm_names | difference(managed_vm_names) | length == 0
+    fail_msg: >-
+      Kubespray groups must be non-empty VM-name lists, each group must be
+      unique, etcd needs at least 3 members, and every node must be in
+      managed_vm_names.
+
+- name: Validate Kubernetes network settings
+  ansible.builtin.assert:
+    that:
+      - kubespray_inventory_service_cidr | string | length > 0
+      - kubespray_inventory_pod_cidr | string | length > 0
+      - kubespray_inventory_service_cidr != kubespray_inventory_pod_cidr
+      - kubespray_inventory_enable_nodelocaldns | type_debug == "bool"
+      - kubespray_inventory_nodelocaldns_ip | string | length > 0
+      - kubespray_inventory_nodelocaldns_health_port | int > 0
+      - kubespray_inventory_nodelocaldns_health_port | int <= 65535
+      - kubespray_inventory_kube_proxy_metrics_bind_address is match('^[^:]+:[0-9]+$')
+      - kubespray_inventory_calico_datastore in ["kdd", "etcd"]
+      - kubespray_inventory_calico_network_backend in ["bird", "vxlan", "none"]
+      - kubespray_inventory_calico_ipip_mode in ["Always", "CrossSubnet", "Never"]
+      - kubespray_inventory_calico_vxlan_mode in ["Always", "CrossSubnet", "Never"]
+    fail_msg: >-
+      Kubernetes service and pod CIDRs must differ, and Calico datastore,
+      backend, IP-in-IP, and VXLAN modes must use supported values.
+
+- name: Validate kubelet and Metrics Server TLS settings
+  ansible.builtin.assert:
+    that:
+      - kubespray_inventory_enable_kubelet_server_certificate_rotation | type_debug == "bool"
+      - kubespray_inventory_kubelet_csr_approver_values is mapping
+      - kubespray_inventory_enable_metrics_server | type_debug == "bool"
+      - kubespray_inventory_enable_metrics_server_kubelet_insecure_tls | type_debug == "bool"
+      - kubespray_inventory_enable_metrics_server_apiservice_insecure_skip_tls_verify | type_debug == "bool"
+      - kubespray_inventory_metrics_server_limits_cpu is string
+      - kubespray_inventory_metrics_server_limits_memory is string
+      - kubespray_inventory_metrics_server_requests_cpu is string
+      - kubespray_inventory_metrics_server_requests_memory is string
+      - >-
+        not (kubespray_inventory_enable_kubelet_server_certificate_rotation | bool)
+        or (kubespray_inventory_kubelet_csr_approver_values.providerRegex
+            | default('') | string | length > 0)
+      - >-
+        not (kubespray_inventory_enable_kubelet_server_certificate_rotation | bool)
+        or (kubespray_inventory_kubelet_csr_approver_values.providerIpPrefixes
+            | default('') | string | length > 0)
+      - >-
+        not (kubespray_inventory_enable_kubelet_server_certificate_rotation | bool)
+        or not (kubespray_inventory_kubelet_csr_approver_values.bypassDnsResolution
+                | default(true) | bool)
+      - >-
+        not (kubespray_inventory_enable_kubelet_server_certificate_rotation | bool)
+        or not (kubespray_inventory_kubelet_csr_approver_values.bypassHostnameCheck
+                | default(true) | bool)
+      - >-
+        not (kubespray_inventory_enable_metrics_server | bool)
+        or kubespray_inventory_enable_metrics_server_kubelet_insecure_tls | bool
+        or kubespray_inventory_enable_kubelet_server_certificate_rotation | bool
+    fail_msg: >-
+      Kubelet serving-certificate rotation requires restrictive hostname and
+      IP policies with DNS and hostname validation enabled. Metrics Server may
+      enforce kubelet TLS verification only when certificate rotation is enabled.
+
+- name: Build rendered Kubespray node names
+  ansible.builtin.set_fact:
+    kubespray_inventory_rendered_node_names: >-
+      {{ (kubespray_inventory_rendered_node_names | default([]))
+         + [kubespray_inventory_node_names[item]
+            | default(item | replace('_', '-') | replace('.', '-'))] }}
+  loop: "{{ kubespray_inventory_all_vm_names }}"
+
+- name: Validate rendered Kubespray node names
+  ansible.builtin.assert:
+    that:
+      - >-
+        kubespray_inventory_rendered_node_names | length
+        == (kubespray_inventory_rendered_node_names | unique | list | length)
+      - >-
+        kubespray_inventory_rendered_node_names
+        | select('match', '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+        | list | length == kubespray_inventory_rendered_node_names | length
+    fail_msg: "Rendered Kubespray node names must be unique DNS-safe lowercase hostnames."
+
+- name: Validate Kubespray node hostvars
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].ansible_host is defined
+      - hostvars[item].ansible_host | string | length > 0
+      - hostvars[item].kubernetes_primary_interface is defined
+      - hostvars[item].kubernetes_primary_interface | string | length > 0
+    fail_msg: >-
+      Managed VM '{{ item }}' must define ansible_host and
+      kubernetes_primary_interface.
+  loop: "{{ kubespray_inventory_all_vm_names }}"
+
+- name: Validate MetalLB addon settings
+  ansible.builtin.assert:
+    that:
+      - not (kubespray_inventory_enable_metallb | bool) or kubespray_inventory_metallb_ip_range is sequence
+      - not (kubespray_inventory_enable_metallb | bool) or kubespray_inventory_metallb_ip_range is not string
+      - not (kubespray_inventory_enable_metallb | bool) or kubespray_inventory_metallb_ip_range | length > 0
+    fail_msg: "Set kubespray_inventory_metallb_ip_range to one or more free LAN ranges before enabling MetalLB."
+
+- name: Validate kube-vip settings
+  ansible.builtin.assert:
+    that:
+      - >-
+        [kubespray_inventory_enable_kube_vip,
+         kubespray_inventory_enable_kube_vip_arp,
+         kubespray_inventory_enable_kube_vip_controlplane,
+         kubespray_inventory_enable_kube_vip_services,
+         kubespray_inventory_enable_kube_vip_lb]
+        | map('type_debug') | unique | list == ['bool']
+      - not (kubespray_inventory_enable_kube_vip | bool) or kubespray_inventory_kube_vip_address | length > 0
+      - not (kubespray_inventory_enable_kube_vip | bool) or kubespray_inventory_enable_kube_vip_controlplane | bool
+      - not (kubespray_inventory_enable_kube_vip | bool) or not (kubespray_inventory_enable_kube_vip_services | bool)
+      - >-
+        not (kubespray_inventory_enable_kube_vip | bool)
+        or kubespray_inventory_kube_vip_address not in
+        (kubespray_inventory_all_vm_names
+         | map('extract', hostvars, 'ansible_host')
+         | map('string')
+         | list)
+      - >-
+        not (kubespray_inventory_enable_kube_vip | bool)
+        or kubespray_inventory_kube_proxy_mode != 'ipvs'
+        or kubespray_inventory_enable_kube_vip_arp | bool
+    fail_msg: >-
+      kube-vip requires a reserved VIP, control-plane mode, ARP with IPVS,
+      and an address that is not assigned to a cluster node. Service mode must
+      remain disabled because MetalLB owns LoadBalancer IPs.

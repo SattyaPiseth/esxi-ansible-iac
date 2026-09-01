@@ -1,0 +1,8 @@
+---
+- name: Prepare Longhorn V1 storage nodes
+  hosts: longhorn_nodes
+  gather_facts: true
+  become: true
+
+  roles:
+    - longhorn_node_prepare

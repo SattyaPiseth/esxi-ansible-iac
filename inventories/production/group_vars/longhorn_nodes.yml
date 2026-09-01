@@ -1,0 +1,7 @@
+---
+# Each production worker has a dedicated disk configured by stable ID in host_vars.
+longhorn_node_prepare_has_data_disk: true
+longhorn_node_prepare_data_path: /var/lib/longhorn
+longhorn_node_prepare_data_filesystem: ext4
+longhorn_node_prepare_data_mount_options: defaults,noatime
+longhorn_node_prepare_enable_multipathd_disabled: true

@@ -1,0 +1,12 @@
+esxi_hostname = "esxi8-01-lab.tss.local"
+esxi_username = "root"
+esxi_password = "REPLACE_WITH_ESXI_PASSWORD"
+
+# Lab mode: current standalone ESXi uses an untrusted/old VMCA certificate.
+# Set false after replacing the ESXi certificate or installing the matching CA.
+esxi_insecure_connection = true
+
+# Keep only values that differ from the defaults in ubuntu-24.04.pkr.hcl.
+# Use PKR_VAR_* environment variables for secrets if you do not want them in a file.
+ssh_password = "REPLACE_WITH_TEMPORARY_PASSWORD"
+ssh_password_hash = "$6$REPLACE_WITH_SHA512_HASH"

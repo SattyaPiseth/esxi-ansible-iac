@@ -1,0 +1,112 @@
+- name: Read kube-system pods
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - pods
+      - --namespace=kube-system
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_system_pods
+
+- name: Validate kube-system pod health
+  ansible.builtin.assert:
+    that:
+      - item.status.phase in ["Running", "Succeeded"]
+      - >-
+        item.status.phase == "Succeeded"
+        or (
+          item.status.containerStatuses | default([]) | length > 0
+          and item.status.containerStatuses
+              | rejectattr('ready', 'equalto', true)
+              | list | length == 0
+        )
+    fail_msg: >-
+      kube-system pod {{ item.metadata.name }} is not healthy. Inspect it with
+      kubectl describe and kubectl logs before continuing hardening.
+  loop: "{{ (kubernetes_health_system_pods.stdout | from_json)['items'] }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+- name: Validate critical Kubernetes rollouts
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - rollout
+      - status
+      - "{{ item }}"
+      - --namespace=kube-system
+      - "--timeout={{ kubernetes_health_rollout_timeout }}"
+  loop: >-
+    {{
+      [
+        'daemonset/calico-node',
+        'daemonset/kube-proxy',
+        'deployment/calico-kube-controllers',
+        'deployment/coredns'
+      ]
+      + (['daemonset/nodelocaldns'] if kubespray_inventory_enable_nodelocaldns | bool else [])
+    }}
+  changed_when: false
+
+- name: Check Calico kube-controllers namespace RBAC
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - auth
+      - can-i
+      - "{{ item }}"
+      - namespaces
+      - --as=system:serviceaccount:kube-system:calico-kube-controllers
+  changed_when: false
+  failed_when: false
+  register: kubernetes_health_calico_namespace_watch
+  loop:
+    - list
+    - watch
+
+- name: Repair Calico kube-controllers namespace RBAC
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - patch
+      - clusterrole
+      - calico-kube-controllers
+      - --type=json
+      - --patch
+      - >-
+        [{"op":"add","path":"/rules/-","value":{"apiGroups":[""],"resources":["namespaces"],"verbs":["get","list","watch"]}}]
+  changed_when: true
+  when: >-
+    kubernetes_health_calico_namespace_watch.results
+    | selectattr('stdout', 'defined')
+    | selectattr('stdout', 'equalto', 'yes')
+    | list
+    | length != 2
+
+- name: Validate Calico kube-controllers namespace RBAC
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - auth
+      - can-i
+      - "{{ item }}"
+      - namespaces
+      - --as=system:serviceaccount:kube-system:calico-kube-controllers
+  changed_when: false
+  register: kubernetes_health_calico_namespace_watch_after_repair
+  failed_when: kubernetes_health_calico_namespace_watch_after_repair.stdout | trim != "yes"
+  loop:
+    - list
+    - watch

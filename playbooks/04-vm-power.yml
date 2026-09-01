@@ -1,0 +1,41 @@
+---
+- name: Manage VM power state
+  hosts: vm_esxi_8.0
+  gather_facts: false
+  vars:
+    vm_power_scope: "{{ scope | default('single') }}"
+    vm_power_targets: >-
+      {{
+        managed_vm_names
+        if vm_power_scope == 'all'
+        else [vm_power_name]
+      }}
+
+  roles:
+    - esxi_validate
+
+  tasks:
+    - name: Validate VM power scope
+      ansible.builtin.assert:
+        that:
+          - vm_power_scope in ['single', 'all']
+        fail_msg: "Set scope to either 'single' or 'all'."
+
+    - name: Validate VM power target list
+      ansible.builtin.assert:
+        that:
+          - vm_power_targets is sequence
+          - vm_power_targets is not string
+          - vm_power_targets | length > 0
+          - vm_power_targets | reject('string') | list | length == 0
+          - vm_power_targets | map('trim') | reject('equalto', '') | list | length == vm_power_targets | length
+        fail_msg: "Pass -e vm_power_name=<name>, or use -e scope=all with managed_vm_names."
+
+    - name: Apply requested power state to selected VMs
+      ansible.builtin.include_role:
+        name: vm_power
+      vars:
+        vm_power_name: "{{ power_vm_name }}"
+      loop: "{{ vm_power_targets }}"
+      loop_control:
+        loop_var: power_vm_name

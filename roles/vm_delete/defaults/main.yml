@@ -1,0 +1,9 @@
+---
+vm_delete_name: ""
+vm_delete_confirm: false
+vm_delete_confirm_name: ""
+vm_delete_confirm_uuid: ""
+vm_delete_enable_force: false
+vm_delete_datacenter: "{{ esxi_datacenter }}"
+vm_delete_folder: "{{ esxi_default_folder }}"
+vm_delete_enable_uuid_confirmation: false

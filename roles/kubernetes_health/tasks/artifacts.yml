@@ -1,0 +1,42 @@
+---
+- name: Check Kubernetes client artifacts
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ kubernetes_health_kubectl }}"
+    - "{{ kubernetes_health_kubeconfig }}"
+  register: kubernetes_health_artifacts
+
+- name: Repair Kubernetes client artifacts when unusable
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - >-
+        item.item.endswith('kubectl')
+        and item.stat.executable
+        or not item.item.endswith('kubectl')
+      - >-
+        item.item.endswith('admin.conf')
+        and item.stat.readable
+        or not item.item.endswith('admin.conf')
+    fail_msg: >-
+      Required Kubespray artifacts are missing or unusable. Re-run
+      playbooks/09-kubespray-deploy.yml so Kubespray can regenerate the local
+      client artifacts cleanly.
+  loop: "{{ kubernetes_health_artifacts.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Ensure operator kubeconfig directory exists
+  ansible.builtin.file:
+    path: "{{ kubernetes_health_operator_kubeconfig | dirname }}"
+    state: directory
+    mode: "0700"
+
+- name: Install operator kubeconfig
+  ansible.builtin.copy:
+    src: "{{ kubernetes_health_kubeconfig }}"
+    dest: "{{ kubernetes_health_operator_kubeconfig }}"
+    remote_src: true
+    mode: "0600"

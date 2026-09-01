@@ -1,0 +1,6 @@
+---
+- name: Validate Kubespray inventory inputs
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Render Kubespray inventory files
+  ansible.builtin.import_tasks: render.yml

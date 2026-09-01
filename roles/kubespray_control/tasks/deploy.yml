@@ -1,0 +1,34 @@
+---
+- name: Deploy Kubernetes with Kubespray
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          kubespray_control_venv_dir + '/bin/ansible-playbook',
+          '--forks',
+          kubespray_control_cluster_playbook_forks | string,
+          '-i',
+          kubespray_control_inventory_dir + '/inventory.ini',
+          '--private-key',
+          kubespray_control_private_key_file,
+          'cluster.yml',
+          '-b',
+          kubespray_control_cluster_playbook_verbosity
+        ]
+        + (
+          ['--tags', kubespray_control_cluster_playbook_tags | join(',')]
+          if kubespray_control_cluster_playbook_tags | length > 0
+          else []
+        )
+      }}
+    chdir: "{{ kubespray_control_install_dir }}"
+  environment: "{{ kubespray_control_deploy_environment }}"
+  no_log: "{{ kubespray_control_enable_deploy_output_hidden | bool }}"
+  register: kubespray_control_deploy_result
+  retries: "{{ kubespray_control_cluster_playbook_retries | default(1) | int }}"
+  delay: "{{ kubespray_control_cluster_playbook_retry_delay | default(0) | int }}"
+  until: kubespray_control_deploy_result.rc == 0
+  changed_when: true
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool

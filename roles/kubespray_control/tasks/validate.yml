@@ -1,0 +1,6 @@
+---
+- name: Validate control node operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == "Linux"
+    fail_msg: "Kubespray native install must run from the Linux manager/control node."
