@@ -1,18 +1,3 @@
 ---
-- name: Validate ESXi production variables
-  hosts: vmware_esxi
-  gather_facts: false
-  roles:
-    - esxi_validate
-
-- name: Gather ESXi host facts
-  hosts: vmware_esxi
-  gather_facts: false
-  roles:
-    - esxi_facts
-
-- name: Power VM on standalone ESXi
-  hosts: vm_esxi_8.0
-  gather_facts: false
-  roles:
-    - vm_power
+- name: Compatibility entry point for the numbered ESXi site playbook
+  ansible.builtin.import_playbook: 99-esxi-site.yml
