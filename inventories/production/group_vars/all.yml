@@ -45,6 +45,11 @@ kubespray_inventory_calico_ipip_mode: Never
 kubespray_inventory_calico_vxlan_mode: Always
 guest_base_enable_nic_offloads_disabled: true
 guest_base_nic_offload_interface: "{{ kubernetes_primary_interface }}"
+guest_base_nic_offload_features:
+  - "gro off"
+  - "lro off"
+  - "tx-udp_tnl-segmentation off"
+  - "tx-udp_tnl-csum-segmentation off"
 
 kubespray_inventory_enable_helm: true
 kubespray_inventory_enable_metrics_server: true

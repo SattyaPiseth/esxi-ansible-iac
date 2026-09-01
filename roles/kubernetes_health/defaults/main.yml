@@ -28,6 +28,9 @@ kubernetes_health_internal_ca_clusterissuer_name: k8s-internal-ca
 kubernetes_health_internal_ca_secret_name: k8s-internal-root-ca-secret
 kubernetes_health_internal_ca_secret_namespace: cert-manager
 kubernetes_health_validate_nic_offloads: "{{ guest_base_enable_nic_offloads_disabled | default(false) }}"
+kubernetes_health_nic_offload_feature_names:
+  gro: generic-receive-offload
+  lro: large-receive-offload
 kubernetes_health_enable_lb_smoke_test: false
 kubernetes_health_lb_smoke_test_name: kubernetes-health-lb-smoke
 kubernetes_health_lb_smoke_test_image: nginx:1.27

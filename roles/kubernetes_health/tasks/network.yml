@@ -1,3 +1,4 @@
+---
 - name: Read Kubernetes node NIC offload state
   ansible.builtin.command:
     argv:
@@ -11,17 +12,38 @@
   register: kubernetes_health_nic_offloads
   when: kubernetes_health_validate_nic_offloads | bool
 
+- name: Build expected Kubernetes node NIC offload state
+  ansible.builtin.set_fact:
+    kubernetes_health_nic_offload_expected_statuses: >-
+      {{
+        kubernetes_health_nic_offload_expected_statuses | default([])
+        + [
+            kubernetes_health_nic_offload_feature_names.get(
+              kubernetes_health_nic_offload_feature_parts[0],
+              kubernetes_health_nic_offload_feature_parts[0]
+            )
+            ~ ': '
+            ~ kubernetes_health_nic_offload_feature_parts[1]
+          ]
+      }}
+  vars:
+    kubernetes_health_nic_offload_feature_parts: "{{ item.split() }}"
+  loop: "{{ guest_base_nic_offload_features }}"
+  when: kubernetes_health_validate_nic_offloads | bool
+
 - name: Validate Kubernetes node NIC offload state
   ansible.builtin.assert:
     that:
-      - "'generic-receive-offload: off' in item.stdout"
-      - "'large-receive-offload: off' in item.stdout"
-      - "'tx-udp_tnl-segmentation: off' in item.stdout"
-      - "'tx-udp_tnl-csum-segmentation: off' in item.stdout"
+      - item.1 in item.0.stdout
     fail_msg: >-
-      {{ item.item }} still has NIC offload settings that can break Calico VXLAN
-      traffic on this VMware environment.
-  loop: "{{ kubernetes_health_nic_offloads.results | default([]) }}"
+      {{ item.0.item }} does not report expected NIC offload state {{ item.1 }};
+      this can break Calico VXLAN traffic on this VMware environment.
+  loop: >-
+    {{
+      (kubernetes_health_nic_offloads.results | default([]))
+      | product(kubernetes_health_nic_offload_expected_statuses | default([]))
+      | list
+    }}
   loop_control:
-    label: "{{ item.item }}"
+    label: "{{ item.0.item }}: {{ item.1 }}"
   when: kubernetes_health_validate_nic_offloads | bool
