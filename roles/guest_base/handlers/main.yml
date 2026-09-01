@@ -1,0 +1,14 @@
+---
+- name: Restart guest NIC offload service
+  ansible.builtin.systemd_service:
+    name: guest-nic-offloads.service
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Reload ssh
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: reloaded
+  become: true

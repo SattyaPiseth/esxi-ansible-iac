@@ -1,0 +1,34 @@
+---
+- name: Persist guest NIC offload settings
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/guest-nic-offloads.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Apply guest NIC offload settings for Kubernetes overlay networking
+      Wants=network-online.target
+      After=network-online.target
+      Before=kubelet.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStartPre=/bin/sh -c 'for attempt in $(seq 1 60); do [ -e /sys/class/net/{{ guest_base_nic_offload_interface }} ] && exit 0; sleep 1; done; echo "Interface {{ guest_base_nic_offload_interface }} did not appear within 60 seconds" >&2; exit 1'
+      ExecStart=/usr/sbin/ethtool -K {{ guest_base_nic_offload_interface }} {{ guest_base_nic_offload_features | join(" ") }}
+
+      [Install]
+      WantedBy=multi-user.target kubelet.service
+  become: true
+  notify: Restart guest NIC offload service
+  when: guest_base_enable_nic_offloads_disabled | bool
+
+- name: Enable guest NIC offload service
+  ansible.builtin.systemd_service:
+    name: guest-nic-offloads.service
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: guest_base_enable_nic_offloads_disabled | bool
