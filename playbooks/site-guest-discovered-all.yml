@@ -19,9 +19,13 @@
           - guest_credential_source is defined
           - guest_credential_source in hostvars
           - hostvars[guest_credential_source].ansible_user is defined
-          - hostvars[guest_credential_source].ansible_password is defined or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
+          - >-
+            hostvars[guest_credential_source].ansible_password is defined
+            or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
           - hostvars[guest_credential_source].guest_become_ready | bool
-        fail_msg: "Use this playbook only with vm_state=powered-on, a non-empty vm_discovery_targets list, and a valid guest_credential_source."
+        fail_msg: >-
+          Use this playbook only with vm_state=powered-on, a non-empty
+          vm_discovery_targets list, and a valid guest_credential_source.
 
     - name: Apply requested power state to each managed VM
       ansible.builtin.include_role:

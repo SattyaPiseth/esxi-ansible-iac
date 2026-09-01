@@ -1,3 +1,4 @@
+---
 - name: Read kube-system pods
   ansible.builtin.command:
     argv:

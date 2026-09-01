@@ -1,3 +1,4 @@
+---
 - name: Persist Longhorn kernel modules
   ansible.builtin.copy:
     dest: /etc/modules-load.d/longhorn.conf

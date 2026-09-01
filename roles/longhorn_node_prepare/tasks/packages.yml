@@ -1,3 +1,4 @@
+---
 - name: Install Longhorn node prerequisites
   ansible.builtin.apt:
     name: "{{ longhorn_node_prepare_packages }}"

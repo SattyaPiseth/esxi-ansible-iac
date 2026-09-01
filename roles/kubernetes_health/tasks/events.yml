@@ -1,3 +1,4 @@
+---
 - name: Read Kubernetes warning events
   ansible.builtin.command:
     argv:

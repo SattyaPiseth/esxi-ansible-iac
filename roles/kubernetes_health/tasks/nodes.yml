@@ -1,3 +1,4 @@
+---
 - name: Wait for all registered nodes to be ready
   ansible.builtin.command:
     argv:

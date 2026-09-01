@@ -1,3 +1,4 @@
+---
 - name: Validate NodeLocalDNS health on every node
   ansible.builtin.uri:
     url: >-

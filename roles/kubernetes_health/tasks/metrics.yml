@@ -1,3 +1,4 @@
+---
 - name: Read Metrics APIService
   ansible.builtin.command:
     argv:

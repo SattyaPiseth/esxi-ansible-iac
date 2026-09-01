@@ -1,3 +1,4 @@
+---
 - name: Read NFSv4 kernel configuration
   ansible.builtin.command:
     argv:

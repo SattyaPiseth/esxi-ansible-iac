@@ -6,8 +6,10 @@
     owner: "{{ ansible_facts.user_id }}"
     group: "{{ ansible_facts.user_gid }}"
   loop:
-    - { path: "{{ kubespray_control_artifacts_dir }}/kubectl", mode: "0755" }
-    - { path: "{{ kubespray_control_artifacts_dir }}/admin.conf", mode: "0600" }
+    - path: "{{ kubespray_control_artifacts_dir }}/kubectl"
+      mode: "0755"
+    - path: "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      mode: "0600"
   become: true
   when:
     - kubespray_control_enable_cluster_playbook_run | bool

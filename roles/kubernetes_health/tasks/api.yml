@@ -1,3 +1,4 @@
+---
 - name: Check Kubernetes API readiness
   ansible.builtin.command:
     argv:

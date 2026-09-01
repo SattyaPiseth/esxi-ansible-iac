@@ -1,0 +1,20 @@
+---
+repos:
+  - repo: local
+    hooks:
+      - id: yamllint
+        name: Lint YAML
+        entry: yamllint
+        language: system
+        types: [yaml]
+      - id: ansible-lint
+        name: Lint Ansible content
+        entry: ansible-lint
+        language: system
+        files: ^(playbooks|roles|inventories)/.*\.ya?ml$
+        pass_filenames: false
+      - id: ansible-syntax
+        name: Check every playbook syntax
+        entry: bash -c 'for playbook in playbooks/*.yml; do ansible-playbook "$playbook" --syntax-check || exit 1; done'
+        language: system
+        files: ^(playbooks|roles|inventories)/.*\.ya?ml$

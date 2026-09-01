@@ -14,9 +14,13 @@
           - guest_credential_source is defined
           - guest_credential_source in hostvars
           - hostvars[guest_credential_source].ansible_user is defined
-          - hostvars[guest_credential_source].ansible_password is defined or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
+          - >-
+            hostvars[guest_credential_source].ansible_password is defined
+            or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
           - hostvars[guest_credential_source].guest_become_ready | bool
-        fail_msg: "guest_credential_source must reference an inventory host with complete guest SSH and become credentials."
+        fail_msg: >-
+          guest_credential_source must reference an inventory host with
+          complete guest SSH and become credentials.
 
     - name: Wait for VMware Tools to report VM IP
       community.vmware.vmware_vm_info:
