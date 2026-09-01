@@ -23,6 +23,9 @@
       {{
         kubernetes_health_kube_vip_items
         | selectattr('status.phase', 'equalto', 'Running')
+        | selectattr('status.containerStatuses', 'defined')
+        | selectattr('status.containerStatuses.0.ready', 'defined')
+        | selectattr('status.containerStatuses.0.ready', 'equalto', true)
         | map(attribute='spec.nodeName')
         | list
       }}
@@ -42,7 +45,7 @@
       control-plane node.
   when: kubernetes_health_validate_kube_vip | bool
 
-- name: Validate kube-vip restart count
+- name: Validate optional kube-vip lifetime restart ceiling
   vars:
     kubernetes_health_kube_vip_items: >-
       {{ (kubernetes_health_kube_vip_pods.stdout | from_json)['items'] }}
@@ -66,4 +69,55 @@
     fail_msg: >-
       kube-vip has container restarts. Inspect previous kube-vip logs and node
       logs for the interruption window before declaring the API VIP stable.
+  when:
+    - kubernetes_health_validate_kube_vip | bool
+    - kubernetes_health_kube_vip_max_restarts | int >= 0
+
+- name: Observe kube-vip restart counters
+  ansible.builtin.pause:
+    seconds: "{{ kubernetes_health_kube_vip_restart_observation_seconds | int }}"
+  when:
+    - kubernetes_health_validate_kube_vip | bool
+    - kubernetes_health_kube_vip_restart_observation_seconds | int > 0
+
+- name: Read kube-vip pods after restart observation
+  ansible.builtin.command:
+    argv:
+      - "{{ kubernetes_health_kubectl }}"
+      - --kubeconfig
+      - "{{ kubernetes_health_kubeconfig }}"
+      - get
+      - pods
+      - --namespace=kube-system
+      - --selector=k8s-app=kube-vip
+      - -o
+      - json
+  changed_when: false
+  register: kubernetes_health_kube_vip_pods_after_observation
+  when: kubernetes_health_validate_kube_vip | bool
+
+- name: Validate kube-vip restart counters are stable
+  vars:
+    kubernetes_health_kube_vip_latest_items: >-
+      {{ (kubernetes_health_kube_vip_pods_after_observation.stdout | from_json)['items'] }}
+    kubernetes_health_kube_vip_latest_item: >-
+      {{
+        kubernetes_health_kube_vip_latest_items
+        | selectattr('metadata.name', 'equalto', item.metadata.name)
+        | first
+      }}
+  ansible.builtin.assert:
+    that:
+      - kubernetes_health_kube_vip_latest_item is defined
+      - >-
+        kubernetes_health_kube_vip_latest_item.status.containerStatuses[0].restartCount | int
+        == item.status.containerStatuses[0].restartCount | int
+    fail_msg: >-
+      {{ item.metadata.name }} restarted during the
+      {{ kubernetes_health_kube_vip_restart_observation_seconds }}-second health
+      observation. Inspect previous kube-vip, kubelet, containerd, API server,
+      and node logs before declaring the API VIP stable.
+  loop: "{{ (kubernetes_health_kube_vip_pods.stdout | from_json)['items'] }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
   when: kubernetes_health_validate_kube_vip | bool

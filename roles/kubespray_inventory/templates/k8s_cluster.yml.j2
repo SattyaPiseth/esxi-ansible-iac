@@ -6,6 +6,7 @@ kube_proxy_metrics_bind_address: "{{ kubespray_inventory_kube_proxy_metrics_bind
 kube_proxy_strict_arp: {{ (((kubespray_inventory_enable_kube_vip | bool) and (kubespray_inventory_enable_kube_vip_arp | bool)) or (kubespray_inventory_enable_metallb | bool)) | lower }}
 {% if kubespray_inventory_enable_kube_vip %}
 kube_vip_enabled: true
+kube_vip_version: "{{ kubespray_inventory_kube_vip_version }}"
 kube_vip_controlplane_enabled: {{ kubespray_inventory_enable_kube_vip_controlplane | bool | lower }}
 kube_vip_services_enabled: {{ kubespray_inventory_enable_kube_vip_services | bool | lower }}
 kube_vip_arp_enabled: {{ kubespray_inventory_enable_kube_vip_arp | bool | lower }}

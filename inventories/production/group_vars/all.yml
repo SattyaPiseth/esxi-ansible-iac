@@ -26,6 +26,7 @@ kubespray_inventory_container_manager: containerd
 kubespray_inventory_kube_proxy_mode: ipvs
 kubespray_inventory_kube_proxy_metrics_bind_address: "0.0.0.0:10249"
 kubespray_inventory_enable_kube_vip: true
+kubespray_inventory_kube_vip_version: "1.0.4"
 kubespray_inventory_kube_vip_address: 172.16.6.150
 kubespray_inventory_dns_mode: coredns
 kubespray_inventory_enable_nodelocaldns: true

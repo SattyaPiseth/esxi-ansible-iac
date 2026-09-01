@@ -14,6 +14,7 @@ kubespray_inventory_kube_proxy_mode: "{{ kubespray_kube_proxy_mode | default('ip
 kubespray_inventory_kube_proxy_metrics_bind_address: >-
   {{ kubespray_kube_proxy_metrics_bind_address | default('127.0.0.1:10249') }}
 kubespray_inventory_enable_kube_vip: "{{ kubespray_enable_kube_vip | default(false) }}"
+kubespray_inventory_kube_vip_version: "{{ kubespray_kube_vip_version | default('1.0.4') }}"
 kubespray_inventory_kube_vip_address: "{{ kubespray_kube_vip_address | default('') }}"
 kubespray_inventory_enable_kube_vip_arp: "{{ kubespray_enable_kube_vip_arp | default(true) }}"
 kubespray_inventory_enable_kube_vip_controlplane: "{{ kubespray_enable_kube_vip_controlplane | default(true) }}"

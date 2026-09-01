@@ -22,7 +22,10 @@ kubernetes_health_warning_event_exclude_regex: ""
 kubernetes_health_validate_metallb_controller_reachability: "{{ kubespray_inventory_enable_metallb | default(false) }}"
 kubernetes_health_validate_metallb_address_pools: "{{ kubernetes_health_validate_metallb_controller_reachability }}"
 kubernetes_health_validate_kube_vip: "{{ kubespray_inventory_enable_kube_vip | default(false) }}"
-kubernetes_health_kube_vip_max_restarts: 0
+# A negative value disables the optional lifetime restart ceiling. Stability is
+# always checked by comparing restart counters over the observation interval.
+kubernetes_health_kube_vip_max_restarts: -1
+kubernetes_health_kube_vip_restart_observation_seconds: 10
 kubernetes_health_validate_internal_ca_clusterissuer: "{{ kubespray_inventory_enable_cert_manager | default(false) }}"
 kubernetes_health_internal_ca_clusterissuer_name: k8s-internal-ca
 kubernetes_health_internal_ca_secret_name: k8s-internal-root-ca-secret

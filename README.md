@@ -1706,8 +1706,7 @@ Then run the full health gate, including the LoadBalancer smoke test:
 ansible-playbook playbooks/14-kubernetes-health.yml \
   --private-key ~/.ssh/esxi_ansible_ed25519 \
   -e kubernetes_health_enable_lb_smoke_test=true \
-  -e kubernetes_health_enable_warning_event_failure=true \
-  -e kubernetes_health_kube_vip_max_restarts=21
+  -e kubernetes_health_enable_warning_event_failure=true
 ```
 
 If Kubespray finishes but the live `kube-proxy` ConfigMap still reports
@@ -1815,35 +1814,32 @@ kubectl -n kube-system logs -l k8s-app=kube-vip --since=2h --all-containers
 kubectl -n kube-system logs -l k8s-app=kube-vip --previous --all-containers
 ```
 
-If kube-vip restart counts are already known to be historical, run the health
-check with the current maximum restart baseline instead of the default zero.
-For the July 22, 2026 validation, the observed stable baseline was:
-
-```text
-kube-vip-ubuntu-24-04-mgmt-01: 13
-kube-vip-ubuntu-24-04-mgmt-02: 19
-kube-vip-ubuntu-24-04-mgmt-03: 21
-```
-
-Use the maximum value when rerunning production health:
+The health role samples each kube-vip restart counter twice, ten seconds apart.
+Historical restart counts therefore do not fail the gate, while a restart
+during the observation window does. Run the normal production health check
+without maintaining a manual restart baseline:
 
 ```bash
 ansible-playbook playbooks/14-kubernetes-health.yml \
   --private-key ~/.ssh/esxi_ansible_ed25519 \
-  -e kubernetes_health_enable_warning_event_failure=true \
-  -e kubernetes_health_kube_vip_max_restarts=21
+  -e kubernetes_health_enable_warning_event_failure=true
 ```
 
-Then observe that the counters do not increase:
+For a longer automated observation, set
+`kubernetes_health_kube_vip_restart_observation_seconds`. Set
+`kubernetes_health_kube_vip_max_restarts` to a non-negative value only when
+an additional lifetime restart ceiling is explicitly required.
+
+You can also observe the counters continuously:
 
 ```bash
 watch -n 60 'kubectl -n kube-system get pods -l k8s-app=kube-vip -o jsonpath="{range .items[*]}{.metadata.name}{\" restarts=\"}{.status.containerStatuses[0].restartCount}{\" started=\"}{.status.containerStatuses[0].state.running.startedAt}{\"\n\"}{end}"'
 ```
 
-If any kube-vip restart count increases above the documented baseline without
-a planned control-plane restart or Kubespray run, pause production validation
-and inspect kube-vip logs, kubelet/containerd logs, API server readiness
-events, and ESXi/network events before raising the threshold.
+If any kube-vip restart count increases without a planned control-plane restart
+or Kubespray run, pause production validation and inspect kube-vip logs,
+kubelet/containerd logs, API server readiness events, and ESXi/network events
+before proceeding.
 
 For an unexplained cluster-wide interruption, preserve the node logs before
 rotation removes the useful window:
