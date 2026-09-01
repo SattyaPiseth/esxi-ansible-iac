@@ -82,6 +82,7 @@
   run_once: true
   changed_when: false
   register: guest_auth_validate_private_key_fingerprint
+  when: not ansible_check_mode
 
 - name: Read managed public key fingerprint
   ansible.builtin.command:
@@ -96,17 +97,36 @@
   run_once: true
   changed_when: false
   register: guest_auth_validate_public_key_fingerprint
+  when: not ansible_check_mode
+
+- name: Parse managed guest SSH key fingerprints
+  ansible.builtin.set_fact:
+    guest_auth_validate_private_key_fingerprint_value: >-
+      {{ guest_auth_validate_private_key_fingerprint.stdout
+         | default('')
+         | regex_search('SHA256:[^[:space:]]+')
+         | default('', true) }}
+    guest_auth_validate_public_key_fingerprint_value: >-
+      {{ guest_auth_validate_public_key_fingerprint.stdout
+         | default('')
+         | regex_search('SHA256:[^[:space:]]+')
+         | default('', true) }}
+  run_once: true
+  when: not ansible_check_mode
 
 - name: Validate managed guest SSH public key
   ansible.builtin.assert:
     that:
+      - guest_auth_validate_private_key_fingerprint_value | length > 0
+      - guest_auth_validate_public_key_fingerprint_value | length > 0
       - >-
-        guest_auth_validate_public_key_fingerprint.stdout.split()[1]
-        == guest_auth_validate_private_key_fingerprint.stdout.split()[1]
+        guest_auth_validate_public_key_fingerprint_value
+        == guest_auth_validate_private_key_fingerprint_value
     fail_msg: >-
       Managed public key {{ guest_authorized_key_file }} must exist and match
       {{ ansible_ssh_private_key_file }}. Private key fingerprint:
-      {{ guest_auth_validate_private_key_fingerprint.stdout.split()[1] }}.
+      {{ guest_auth_validate_private_key_fingerprint_value | default('unavailable', true) }}.
       Public key fingerprint:
-      {{ guest_auth_validate_public_key_fingerprint.stdout.split()[1] }}.
+      {{ guest_auth_validate_public_key_fingerprint_value | default('unavailable', true) }}.
   run_once: true
+  when: not ansible_check_mode
