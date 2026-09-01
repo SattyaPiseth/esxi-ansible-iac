@@ -2,6 +2,7 @@
 name: Validate infrastructure code
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -10,15 +11,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -34,4 +41,5 @@ jobs:
       - name: Validate inventory
         run: ansible-inventory --graph
 
-      - name: Lint YAML and Ansible content
+      - name: Run repository validation
+        run: pre-commit run --all-files
