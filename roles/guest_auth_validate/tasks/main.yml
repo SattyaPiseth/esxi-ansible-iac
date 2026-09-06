@@ -104,13 +104,15 @@
     guest_auth_validate_private_key_fingerprint_value: >-
       {{ guest_auth_validate_private_key_fingerprint.stdout
          | default('')
-         | regex_search('SHA256:[^[:space:]]+')
+         | regex_search(guest_auth_validate_fingerprint_pattern)
          | default('', true) }}
     guest_auth_validate_public_key_fingerprint_value: >-
       {{ guest_auth_validate_public_key_fingerprint.stdout
          | default('')
-         | regex_search('SHA256:[^[:space:]]+')
+         | regex_search(guest_auth_validate_fingerprint_pattern)
          | default('', true) }}
+  vars:
+    guest_auth_validate_fingerprint_pattern: 'SHA256:\S+'
   run_once: true
   when: not ansible_check_mode
 
