@@ -36,6 +36,10 @@ kubespray_control_enable_metrics_server_apiservice_insecure_skip_tls_verify: >-
 kubespray_control_enable_metrics_server_deployment_reconcile: true
 kubespray_control_metrics_server_probe_timeout_seconds: >-
   {{ kubespray_metrics_server_probe_timeout_seconds | default(5) }}
+kubespray_control_enable_argocd: >-
+  {{ kubespray_inventory_enable_argocd | default(kubespray_enable_argocd | default(false)) }}
+kubespray_control_argocd_namespace: argocd
+kubespray_control_argocd_git_attempts_count: 3
 kubespray_control_packages:
   - git
   - python3

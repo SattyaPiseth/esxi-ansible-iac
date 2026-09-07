@@ -138,3 +138,74 @@
       | default(0) | int != kubespray_control_metrics_server_probe_timeout_seconds | int
       or kubespray_control_metrics_server_container.readinessProbe.timeoutSeconds
       | default(0) | int != kubespray_control_metrics_server_probe_timeout_seconds | int
+
+- name: Read Argo CD repo-server deployment before Git retry reconciliation
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_artifacts_dir }}/kubectl"
+      - --kubeconfig
+      - "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      - --namespace={{ kubespray_control_argocd_namespace }}
+      - get
+      - deployment
+      - argocd-repo-server
+      - -o
+      - json
+  changed_when: false
+  register: kubespray_control_argocd_repo_server_deployment
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_argocd | bool
+
+- name: Reconcile Argo CD repo-server Git retry attempts
+  vars:
+    kubespray_control_argocd_repo_server: >-
+      {{
+        (kubespray_control_argocd_repo_server_deployment.stdout | from_json)
+        .spec.template.spec.containers
+        | selectattr('name', 'equalto', 'argocd-repo-server')
+        | first
+      }}
+    kubespray_control_argocd_git_attempts_current: >-
+      {{
+        kubespray_control_argocd_repo_server.env
+        | default([])
+        | selectattr('name', 'equalto', 'ARGOCD_GIT_ATTEMPTS_COUNT')
+        | map(attribute='value')
+        | first
+        | default('')
+      }}
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_artifacts_dir }}/kubectl"
+      - --kubeconfig
+      - "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      - --namespace={{ kubespray_control_argocd_namespace }}
+      - set
+      - env
+      - deployment/argocd-repo-server
+      - "ARGOCD_GIT_ATTEMPTS_COUNT={{ kubespray_control_argocd_git_attempts_count }}"
+  changed_when: true
+  register: kubespray_control_argocd_repo_server_patch
+  when:
+    - kubespray_control_enable_cluster_playbook_run | bool
+    - kubespray_control_enable_cluster_deploy | bool
+    - kubespray_control_enable_argocd | bool
+    - >-
+      kubespray_control_argocd_git_attempts_current | string
+      != kubespray_control_argocd_git_attempts_count | string
+
+- name: Wait for Argo CD repo-server Git retry reconciliation
+  ansible.builtin.command:
+    argv:
+      - "{{ kubespray_control_artifacts_dir }}/kubectl"
+      - --kubeconfig
+      - "{{ kubespray_control_artifacts_dir }}/admin.conf"
+      - --namespace={{ kubespray_control_argocd_namespace }}
+      - rollout
+      - status
+      - deployment/argocd-repo-server
+      - "--timeout={{ kubespray_control_rollout_timeout | default('5m') }}"
+  changed_when: false
+  when: kubespray_control_argocd_repo_server_patch is changed
