@@ -1,719 +1,331 @@
 # kube-vip Per-Node Interface Configuration
 
-## Overview
+[Documentation index](README.md) · [Project README](../README.md) · [Feature maintenance guide](feature-maintenance.md#8-kube-vip-control-plane-endpoint)
 
-This document describes the Kubernetes networking correction required after restoring the control-plane virtual machines from VMware ESXi 8 to VMware ESXi 6.7.
+## Purpose
 
-The restored virtual machines do not all expose the Kubernetes-facing NIC using the same Linux interface name.
+This guide explains how this repository selects the network interface used by kube-vip, how that value is propagated into Kubespray, and how to verify a change safely.
 
-Current interface mapping:
+The repository supports different Linux interface names across node classes. It does not rename interfaces or maintain a separate kube-vip interface setting.
 
-| Node | Kubernetes Primary Interface |
-|---|---|
-| `ubuntu_24.04-mgmt-01` | `ens33` |
-| `ubuntu_24.04-mgmt-02` | `ens192` |
-| `ubuntu_24.04-mgmt-03` | `ens192` |
-| `ubuntu_24.04-wrk-01` | `ens33` |
-| `ubuntu_24.04-wrk-02` | `ens33` |
-| `ubuntu_24.04-wrk-03` | `ens33` |
+## Current production configuration
 
-The Linux interfaces must **not** be renamed or reconfigured simply to make all nodes identical.
+The authoritative mapping is in `inventories/production/hosts.yml`:
 
-Instead, the Ansible source of truth must define the Kubernetes primary interface on a per-node basis.
+| Ansible inventory host | Kubernetes node | Primary interface |
+|---|---|---|
+| `ubuntu_24.04-mgmt-01` | `ubuntu-24-04-mgmt-01` | `ens192` |
+| `ubuntu_24.04-mgmt-02` | `ubuntu-24-04-mgmt-02` | `ens192` |
+| `ubuntu_24.04-mgmt-03` | `ubuntu-24-04-mgmt-03` | `ens192` |
+| `ubuntu_24.04-wrk-01` | `ubuntu-24-04-wrk-01` | `ens33` |
+| `ubuntu_24.04-wrk-02` | `ubuntu-24-04-wrk-02` | `ens33` |
+| `ubuntu_24.04-wrk-03` | `ubuntu-24-04-wrk-03` | `ens33` |
 
-The same per-host interface is then used by:
+The Kubernetes API virtual IP is `172.16.6.150`.
 
-- kube-vip
-- Kubespray generated inventory
-- NIC offload configuration
-- Kubernetes health checks
+Only control-plane nodes run kube-vip. Worker interface values are still rendered into the generated inventory because the same variable is also used for node networking, NIC-offload policy, and health validation.
 
-This avoids introducing unnecessary networking, etcd, or Kubernetes API availability risk on already-running control-plane nodes.
+## Source-of-truth model
 
----
-
-## Objective
-
-Replace the previous global interface assumption:
+Each managed Kubernetes node defines one variable:
 
 ```yaml
-kube_vip_interface: ens33
+kubernetes_primary_interface: ens192
 ```
 
-with a node-specific configuration.
-
-The required kube-vip mapping is:
-
-```text
-ubuntu-24-04-mgmt-01 -> ens33
-ubuntu-24-04-mgmt-02 -> ens192
-ubuntu-24-04-mgmt-03 -> ens192
-```
-
-Workers currently continue to use:
-
-```text
-ens33
-```
-
-The canonical Ansible variable is:
-
-```yaml
-kubernetes_primary_interface
-```
-
-This variable becomes the source of truth for all Kubernetes-facing NIC configuration.
-
----
-
-## Important Constraints
-
-Do not:
-
-- rename `ens33` to `ens192`;
-- rename `ens192` to `ens33`;
-- change Netplan merely to standardize interface names;
-- change the global kube-vip interface from `ens33` to `ens192`;
-- assume every Kubernetes node has the same interface name;
-- introduce another independent NIC-selection variable;
-- perform a kube-vip failover test before all three kube-vip Pods are healthy.
-
-Interface standardization may be considered during a future VM rebuild.
-
-For the current production cluster, per-node interface configuration is the safer design.
-
----
-
-## Repository
-
-Run all repository operations from:
-
-```bash
-cd /home/sysadmin/esxi-ansible-iac
-```
-
-The repository should remain the source of truth.
-
-Avoid permanent live-only changes that are not represented in Ansible.
-
----
-
-## 1. Configure the Interface Per Host
-
-Update:
+The value flows through the repository as follows:
 
 ```text
 inventories/production/hosts.yml
+        |
+        +--> roles/kubespray_inventory
+        |      |
+        |      +--> .generated/kubespray/production/inventory.ini
+        |             kube_vip_interface=<per-host value>
+        |
+        +--> guest_base_nic_offload_interface
+        |      |
+        |      +--> persistent NIC-offload configuration
+        |
+        +--> roles/kubernetes_health
+               |
+               +--> per-node interface and offload validation
 ```
 
-> Important: this file previously contained mixed CRLF/LF line endings. Save the updated file using **LF line endings**.
+Do not introduce a global `kube_vip_interface` or a second independent interface variable. A global value would override the per-host design and break mixed-interface environments.
 
-Add:
+## Files and responsibilities
+
+| File | Responsibility |
+|---|---|
+| `inventories/production/hosts.yml` | Authoritative interface for each node |
+| `inventories/production/group_vars/all.yml` | kube-vip enablement, VIP, version, and shared networking policy |
+| `roles/kubespray_inventory/tasks/validate.yml` | Requires an interface on every rendered node |
+| `roles/kubespray_inventory/templates/kubespray_inventory.ini.j2` | Renders `kube_vip_interface` per host |
+| `roles/kubespray_inventory/templates/k8s_cluster.yml.j2` | Renders shared kube-vip settings without a global interface |
+| `roles/kubernetes_health/tasks/network.yml` | Validates the interface assigned to each node |
+
+Generated content under `.generated/` is not a durable source of truth. Never edit it by hand.
+
+## Shared kube-vip settings
+
+The production variables currently include:
+
+```yaml
+kubespray_inventory_enable_kube_vip: true
+kubespray_inventory_kube_vip_version: "1.0.4"
+kubespray_inventory_kube_vip_address: 172.16.6.150
+```
+
+The rendered cluster configuration enables kube-vip for the control-plane endpoint, enables ARP mode, and leaves kube-vip service mode disabled because MetalLB owns `LoadBalancer` addresses.
+
+The generated group variables must contain the VIP and shared mode settings, but must not contain a global `kube_vip_interface`.
+
+## When to change an interface
+
+Change `kubernetes_primary_interface` only when the interface carrying the node's Kubernetes address has genuinely changed, such as after:
+
+- rebuilding or restoring a VM;
+- changing its virtual NIC model or PCI position;
+- moving the Kubernetes network to another NIC;
+- changing the guest's network configuration deliberately.
+
+Do not change it merely to make interface names identical across nodes.
+
+## Safe change procedure
+
+### 1. Confirm the live interface
+
+On the affected node, identify the interface that owns its inventory address and reaches the LAN:
+
+```bash
+ip -br address
+ip route
+```
+
+From the control node, display the configured address first:
+
+```bash
+ansible-inventory --host ubuntu_24.04-mgmt-01
+```
+
+Replace the inventory alias when checking another node. Do not infer the interface from another VM.
+
+### 2. Update the inventory
+
+Edit only the affected host in `inventories/production/hosts.yml`:
 
 ```yaml
 ubuntu_24.04-mgmt-01:
   ansible_host: 172.16.6.20
-  kubernetes_primary_interface: ens33
-
-ubuntu_24.04-mgmt-02:
-  ansible_host: 172.16.6.21
   kubernetes_primary_interface: ens192
-
-ubuntu_24.04-mgmt-03:
-  ansible_host: 172.16.6.22
-  kubernetes_primary_interface: ens192
-
-ubuntu_24.04-wrk-01:
-  ansible_host: 172.16.6.23
-  kubernetes_primary_interface: ens33
-
-ubuntu_24.04-wrk-02:
-  ansible_host: 172.16.6.24
-  kubernetes_primary_interface: ens33
-
-ubuntu_24.04-wrk-03:
-  ansible_host: 172.16.6.25
-  kubernetes_primary_interface: ens33
 ```
 
-Every Kubernetes node managed by this inventory must define:
+Keep the interface name as a host variable under `managed_vms`.
 
-```yaml
-kubernetes_primary_interface
+### 3. Validate and render
+
+Run from the repository root:
+
+```bash
+ansible-inventory --graph
+ansible-playbook playbooks/07-kubespray-inventory.yml --syntax-check
+ansible-playbook playbooks/07-kubespray-inventory.yml
 ```
 
----
+The render playbook validates that every Kubernetes node has both `ansible_host` and `kubernetes_primary_interface`.
 
-## 2. Remove the Global kube-vip Interface
+### 4. Inspect generated values
 
-Update:
+```bash
+sed -n '/^\[all\]/,/^\[kube_control_plane\]/p' \
+  .generated/kubespray/production/inventory.ini
+
+rg '^kube_vip_interface:' \
+  .generated/kubespray/production/group_vars
+```
+
+Expected production host values:
 
 ```text
-inventories/production/group_vars/all.yml
-```
-
-Keep:
-
-```yaml
-kubespray_inventory_enable_kube_vip: true
-kubespray_inventory_kube_vip_address: 172.16.6.150
-kubespray_inventory_dns_mode: coredns
-```
-
-Remove:
-
-```yaml
-kubespray_inventory_kube_vip_interface: ens33
-```
-
-The kube-vip interface must no longer be selected globally.
-
----
-
-## 3. Make NIC Offload Configuration Per Host
-
-In:
-
-```text
-inventories/production/group_vars/all.yml
-```
-
-change:
-
-```yaml
-guest_base_nic_offload_interface: ens33
-```
-
-to:
-
-```yaml
-guest_base_nic_offload_interface: "{{ kubernetes_primary_interface }}"
-```
-
-The NIC offload configuration therefore uses the same interface source of truth as kube-vip.
-
----
-
-## 4. Render kube-vip Interface Into Each Kubespray Host
-
-Update:
-
-```text
-roles/kubespray_inventory/templates/kubespray_inventory.ini.j2
-```
-
-Each generated host entry must include:
-
-```jinja2
-kube_vip_interface={{ hostvars[vm_name].kubernetes_primary_interface }}
-```
-
-The generated host line should follow this structure:
-
-```jinja2
-{{ kubespray_inventory_node_names[vm_name] | default(vm_name | replace('_', '-') | replace('.', '-')) }} ansible_host={{ hostvars[vm_name].ansible_host }} ip={{ hostvars[vm_name].ansible_host }} access_ip={{ hostvars[vm_name].ansible_host }} kube_vip_interface={{ hostvars[vm_name].kubernetes_primary_interface }}
-```
-
-This creates host-specific Kubespray variables such as:
-
-```text
-ubuntu-24-04-mgmt-01 ... kube_vip_interface=ens33
+ubuntu-24-04-mgmt-01 ... kube_vip_interface=ens192
 ubuntu-24-04-mgmt-02 ... kube_vip_interface=ens192
 ubuntu-24-04-mgmt-03 ... kube_vip_interface=ens192
+ubuntu-24-04-wrk-01  ... kube_vip_interface=ens33
+ubuntu-24-04-wrk-02  ... kube_vip_interface=ens33
+ubuntu-24-04-wrk-03  ... kube_vip_interface=ens33
 ```
 
----
+The `rg` command should return no global interface from generated group variables. A nonzero `rg` exit status is expected when no match exists.
 
-## 5. Remove kube-vip Interface From Generated Group Variables
+### 5. Preview guest reconciliation
 
-Update:
-
-```text
-roles/kubespray_inventory/templates/k8s_cluster.yml.j2
-```
-
-Keep:
-
-```yaml
-kube_vip_lb_enable: {{ kubespray_inventory_enable_kube_vip_lb | bool | lower }}
-kube_vip_address: "{{ kubespray_inventory_kube_vip_address }}"
-```
-
-Remove:
-
-```yaml
-kube_vip_interface: "{{ kubespray_inventory_kube_vip_interface }}"
-```
-
-The generated Kubespray group variables must not override the interface selected for individual hosts.
-
----
-
-## 6. Remove the Obsolete Role Default
-
-Update:
-
-```text
-roles/kubespray_inventory/defaults/main.yml
-```
-
-Remove:
-
-```yaml
-kubespray_inventory_kube_vip_interface: "{{ kubespray_kube_vip_interface | default('') }}"
-```
-
-Keep the remaining kube-vip defaults unchanged.
-
----
-
-## 7. Validate Interface Configuration for Every Host
-
-Update:
-
-```text
-roles/kubespray_inventory/tasks/validate.yml
-```
-
-Each managed VM must define both:
-
-```yaml
-ansible_host
-kubernetes_primary_interface
-```
-
-Validation should include:
-
-```yaml
-- name: Validate Kubespray node hostvars
-  ansible.builtin.assert:
-    that:
-      - hostvars[item].ansible_host is defined
-      - hostvars[item].ansible_host | string | length > 0
-      - hostvars[item].kubernetes_primary_interface is defined
-      - hostvars[item].kubernetes_primary_interface | string | length > 0
-    fail_msg: >-
-      Managed VM '{{ item }}' must define ansible_host and
-      kubernetes_primary_interface.
-  loop: "{{ kubespray_inventory_all_vm_names }}"
-```
-
-Remove the previous global kube-vip interface assertion:
-
-```yaml
-- not (kubespray_inventory_enable_kube_vip | bool) or kubespray_inventory_kube_vip_interface | length > 0
-```
-
-The interface is now validated at host level instead.
-
----
-
-## 8. Update Kubernetes Health Validation
-
-Update:
-
-```text
-roles/kubernetes_health/tasks/network.yml
-```
-
-Replace the global interface:
-
-```yaml
-"{{ kubernetes_health_nic_offload_interface }}"
-```
-
-with the interface belonging to the delegated host:
-
-```yaml
-"{{ hostvars[item].kubernetes_primary_interface }}"
-```
-
-The resulting command should effectively operate as:
-
-```yaml
-- ethtool
-- -k
-- "{{ hostvars[item].kubernetes_primary_interface }}"
-```
-
-This ensures each node is checked against its actual interface.
-
----
-
-## 9. Remove the Obsolete Health Variable
-
-Update:
-
-```text
-roles/kubernetes_health/defaults/main.yml
-```
-
-Remove:
-
-```yaml
-kubernetes_health_nic_offload_interface: "{{ guest_base_nic_offload_interface | default('ens33') }}"
-```
-
-Keep:
-
-```yaml
-kubernetes_health_validate_nic_offloads: "{{ guest_base_enable_nic_offloads_disabled | default(false) }}"
-kubernetes_health_enable_lb_smoke_test: false
-```
-
-There should no longer be an independent health-check interface variable.
-
----
-
-## 10. Validate Ansible Syntax
-
-Before rendering or applying anything:
+An interface change also changes the target of the persistent NIC-offload policy. Preview the affected node:
 
 ```bash
-cd /home/sysadmin/esxi-ansible-iac
+ansible-playbook playbooks/99-guest-site.yml \
+  --check --limit ubuntu_24.04-mgmt-01
 ```
 
-Run:
+Review the proposed network and offload changes before running without `--check`.
+
+### 6. Reconcile through the supported workflows
+
+Apply guest configuration to the affected node first:
 
 ```bash
-ansible-playbook   -i inventories/production/hosts.yml   playbooks/07-kubespray-inventory.yml   --syntax-check
+ansible-playbook playbooks/99-guest-site.yml \
+  --limit ubuntu_24.04-mgmt-01
 ```
 
-Expected result:
-
-```text
-playbook: playbooks/07-kubespray-inventory.yml
-```
-
-with no syntax or variable errors.
-
-Do not continue if the syntax check fails.
-
----
-
-## 11. Render the Kubespray Inventory
-
-Run:
+For an interface change on an existing control-plane node, use the established Kubespray deployment workflow and its explicit guard:
 
 ```bash
-ansible-playbook   -i inventories/production/hosts.yml   playbooks/07-kubespray-inventory.yml
+ansible-playbook playbooks/09-kubespray-deploy.yml \
+  -e kubespray_control_enable_cluster_deploy=true
 ```
 
-The generated production inventory should be created under:
+Do not edit `/etc/kubernetes/manifests/kube-vip.yaml` manually. Kubespray must remain the owner of the static Pod configuration.
 
-```text
-.generated/kubespray/production/
-```
+For control-plane maintenance, change and verify one node at a time. Confirm API and etcd health before proceeding to another node.
 
----
+## Post-change verification
 
-## 12. Verify Generated Host Variables
-
-Inspect the generated `[all]` section:
+### Repository health check
 
 ```bash
-sed -n '/^\[all\]/,/^\[kube_control_plane\]/p'   .generated/kubespray/production/inventory.ini
+ansible-playbook playbooks/14-kubernetes-health.yml
 ```
 
-Expected relevant entries:
+This validates the API through the VIP, expected kube-vip Pods, node readiness, and per-node network policy.
 
-```text
-ubuntu-24-04-mgmt-01 ... kube_vip_interface=ens33
-ubuntu-24-04-mgmt-02 ... kube_vip_interface=ens192
-ubuntu-24-04-mgmt-03 ... kube_vip_interface=ens192
-```
-
-Workers should resolve to:
-
-```text
-ubuntu-24-04-wrk-01 ... kube_vip_interface=ens33
-ubuntu-24-04-wrk-02 ... kube_vip_interface=ens33
-ubuntu-24-04-wrk-03 ... kube_vip_interface=ens33
-```
-
----
-
-## 13. Confirm the Global Value Is Gone
-
-Run:
-
-```bash
-rg 'kube_vip_interface'   .generated/kubespray/production/group_vars   .generated/kubespray/production/inventory.ini
-```
-
-Expected behavior:
-
-```text
-.generated/kubespray/production/inventory.ini
-```
-
-contains the per-host values.
-
-The generated Kubespray group-variable files must **not** contain a global:
-
-```yaml
-kube_vip_interface:
-```
-
----
-
-## 14. Review the Repository Diff
-
-Before committing:
-
-```bash
-git status --short
-git diff --check
-git diff
-```
-
-`git diff --check` should return no whitespace errors.
-
-Because `hosts.yml` previously contained mixed line endings, verify that the resulting diff does not contain unexpected unrelated content caused by CRLF conversion.
-
-If the entire file appears changed only because of line endings, review carefully before committing.
-
----
-
-## 15. Commit the Configuration
-
-After validation:
-
-```bash
-git add   inventories/production/hosts.yml   inventories/production/group_vars/all.yml   roles/kubespray_inventory/templates/kubespray_inventory.ini.j2   roles/kubespray_inventory/templates/k8s_cluster.yml.j2   roles/kubespray_inventory/defaults/main.yml   roles/kubespray_inventory/tasks/validate.yml   roles/kubernetes_health/tasks/network.yml   roles/kubernetes_health/defaults/main.yml
-```
-
-Review staged changes:
-
-```bash
-git diff --cached --check
-git diff --cached
-```
-
-Then commit according to the repository's normal change-management process.
-
-Example commit message:
-
-```text
-fix(kubernetes): support per-node primary interfaces
-```
-
----
-
-## 16. Reconcile With Kubespray
-
-After the source-of-truth changes are committed and the generated inventory is verified, run the repository's established Kubespray production workflow.
-
-Do not run an unrelated or ad-hoc playbook.
-
-The intended result is that Kubespray reconciles kube-vip using:
-
-```text
-mgmt-01 -> ens33
-mgmt-02 -> ens192
-mgmt-03 -> ens192
-```
-
----
-
-## 17. Verify Kubernetes Nodes
-
-After reconciliation:
+### Nodes and kube-vip Pods
 
 ```bash
 kubectl get nodes -o wide
+kubectl -n kube-system get pods \
+  --selector=k8s-app=kube-vip -o wide
 ```
 
-Expected:
+All three control-plane nodes must be `Ready`, and there must be one ready kube-vip Pod on each control-plane node.
 
-```text
-ubuntu-24-04-mgmt-01   Ready
-ubuntu-24-04-mgmt-02   Ready
-ubuntu-24-04-mgmt-03   Ready
-ubuntu-24-04-wrk-01    Ready
-ubuntu-24-04-wrk-02    Ready
-ubuntu-24-04-wrk-03    Ready
-```
-
-No control-plane node should become `NotReady`.
-
----
-
-## 18. Verify kube-vip Static Pods
-
-Run:
+### API readiness through the VIP
 
 ```bash
-kubectl get pods -n kube-system -o wide | grep kube-vip
+kubectl --server=https://172.16.6.150:6443 \
+  get --raw='/readyz?verbose'
 ```
 
-All three control-plane kube-vip Pods must be healthy:
+The result must end with `readyz check passed`. Investigate any failed etcd or API checks before continuing maintenance.
 
-```text
-kube-vip-ubuntu-24-04-mgmt-01   1/1   Running
-kube-vip-ubuntu-24-04-mgmt-02   1/1   Running
-kube-vip-ubuntu-24-04-mgmt-03   1/1   Running
-```
+### Rendered or live interface
 
-Do not proceed to failover testing unless all three are:
-
-```text
-1/1 Running
-```
-
----
-
-## 19. Verify kube-vip Interface Selection
-
-Inspect the kube-vip configuration or static Pod manifests on each control-plane node.
-
-Required mapping:
-
-```text
-ubuntu-24-04-mgmt-01 -> ens33
-ubuntu-24-04-mgmt-02 -> ens192
-ubuntu-24-04-mgmt-03 -> ens192
-```
-
-The Kubernetes API VIP remains:
-
-```text
-172.16.6.150
-```
-
----
-
-## 20. Verify API and etcd Health
-
-Run:
+Verify the generated value:
 
 ```bash
-kubectl get --raw='/readyz?verbose'
+rg 'kube_vip_interface=' \
+  .generated/kubespray/production/inventory.ini
 ```
 
-Required checks include:
-
-```text
-[+]etcd ok
-[+]etcd-readiness ok
-...
-readyz check passed
-```
-
-Verify the control-plane nodes remain healthy:
+If live behavior differs from the generated configuration, inspect the kube-vip Pod on the affected control-plane node:
 
 ```bash
-kubectl get nodes -o wide
+kubectl -n kube-system get pod \
+  --selector=k8s-app=kube-vip -o yaml
 ```
 
-If required, verify etcd directly on each control-plane node:
+Check the selected node, environment, arguments, recent events, and container logs. Do not patch the live Pod because the static Pod will be recreated from its manifest.
 
-```bash
-sudo systemctl status etcd --no-pager
-sudo ss -lntp | grep -E ':2379|:2380'
-```
+## Failover testing
 
-Typical expected listeners are:
+Perform failover testing only when:
 
-```text
-NODE_IP:2379
-NODE_IP:2380
-127.0.0.1:2379
-```
-
----
-
-## 21. Controlled kube-vip Failover Test
-
-Perform this only after:
-
-- all Kubernetes nodes are `Ready`;
-- all three kube-vip Pods are `1/1 Running`;
-- `/readyz?verbose` passes;
+- every control-plane node is `Ready`;
+- all three kube-vip Pods are ready;
+- the API readiness endpoint passes through the VIP;
 - etcd is healthy;
-- the repository-generated configuration has been verified.
+- kube-vip restart counters are stable;
+- no unrelated cluster maintenance is in progress.
 
-First determine which control-plane node currently owns:
+Test one control-plane node at a time and keep an existing API session available. A failover test is not required merely to render or review the inventory.
 
-```text
-172.16.6.150
+## Troubleshooting
+
+### Interface does not exist
+
+```bash
+ansible ubuntu_24.04-mgmt-01 -b \
+  -m ansible.builtin.command -a 'ip -br link'
 ```
 
-The failover test must confirm that:
+Correct `kubernetes_primary_interface` in the inventory. Do not create or rename an interface simply to satisfy the variable.
 
-1. the current owner releases the VIP;
-2. another healthy control-plane node acquires it;
-3. the new owner uses its own configured interface;
-4. Kubernetes API access remains available;
-5. all three control-plane nodes remain `Ready`;
-6. etcd quorum remains healthy.
+### VIP is unreachable
 
-Perform only one controlled failover action at a time.
+Check, in order:
 
-Do not combine failover testing with VM migration, interface changes, or other infrastructure maintenance.
+1. All control-plane nodes are ready.
+2. kube-vip has one ready Pod per control-plane node.
+3. The configured interface owns the node's Kubernetes/LAN address.
+4. `172.16.6.150` is reserved and not assigned to another device.
+5. ARP traffic is permitted on the network.
+6. kube-proxy strict ARP remains enabled for IPVS mode.
+7. Host firewalls and ESXi port-group policies have not changed.
 
----
+Useful commands:
 
-## Expected Final State
-
-```text
-                       Kubernetes primary NIC
-                       │
-ubuntu-24-04-mgmt-01 ──┴─ ens33
-ubuntu-24-04-mgmt-02 ──┴─ ens192
-ubuntu-24-04-mgmt-03 ──┴─ ens192
-
-ubuntu-24-04-wrk-01  ──┴─ ens33
-ubuntu-24-04-wrk-02  ──┴─ ens33
-ubuntu-24-04-wrk-03  ──┴─ ens33
+```bash
+kubectl -n kube-system describe pod \
+  --selector=k8s-app=kube-vip
+kubectl -n kube-system logs \
+  --selector=k8s-app=kube-vip --tail=200
+ip neigh show 172.16.6.150
 ```
 
-with:
+### NIC-offload validation fails
 
-```text
-kubernetes_primary_interface
-            │
-            ├── kube-vip
-            ├── generated Kubespray inventory
-            ├── NIC offload configuration
-            └── Kubernetes network health validation
+Confirm the inventory-selected interface and inspect its active features:
+
+```bash
+ansible ubuntu_24.04-mgmt-01 -b \
+  -m ansible.builtin.command -a 'ethtool -k ens192'
 ```
 
-There should be no remaining global assumption that all Kubernetes nodes use the same Linux interface name.
+Make persistent corrections through the guest roles. A one-time `ethtool -K` command does not survive every reboot or network reinitialization.
 
----
+### Generated inventory is stale
+
+Regenerate it from source:
+
+```bash
+ansible-playbook playbooks/07-kubespray-inventory.yml
+```
+
+Do not copy values from an old generated inventory back into `hosts.yml`.
 
 ## Rollback
 
-If the generated inventory is incorrect, do not run Kubespray.
+If an inventory change was incorrect:
 
-Correct the Ansible source of truth and re-render first.
+1. Restore the previous `kubernetes_primary_interface` in `hosts.yml`.
+2. Regenerate the Kubespray inventory.
+3. Review the generated host value.
+4. Reconcile the affected guest if the offload target changed.
+5. Run the guarded Kubespray deployment workflow.
+6. Run `14-kubernetes-health.yml`.
 
-If a Kubernetes reconciliation results in kube-vip failure:
+Do not roll back by editing only the generated inventory or a live static Pod manifest.
 
-1. do not rename Linux interfaces;
-2. retain the node's existing networking;
-3. verify the affected host's `kubernetes_primary_interface`;
-4. verify the generated `kube_vip_interface`;
-5. recover kube-vip on one control-plane node at a time;
-6. confirm Kubernetes API and etcd health before continuing.
+## Pre-commit checks
 
-Avoid simultaneous changes to multiple control-plane nodes.
+```bash
+git diff --check
+PATH="$PWD/.venv/vmware/bin:$PATH" \
+  .venv/vmware/bin/pre-commit run --all-files
+```
+
+Review the diff and confirm that no generated files, credentials, or unrelated runtime artifacts are staged.
 
 ---
 
-## Summary
-
-The cluster contains valid but heterogeneous Linux interface names following the VMware restoration.
-
-The correct solution is not to standardize those interfaces on running nodes.
-
-The correct solution is to model the Kubernetes primary interface explicitly per host:
-
-```yaml
-kubernetes_primary_interface
-```
-
-and propagate that value consistently through Ansible, Kubespray, kube-vip, NIC-offload configuration, and health checks.
-
-This preserves the existing host networking while allowing kube-vip to operate correctly on every control-plane node.
+[Documentation index](README.md) · [Project README](../README.md) · [kube-vip feature ownership](feature-maintenance.md#8-kube-vip-control-plane-endpoint)
