@@ -39,6 +39,8 @@ Maintenance reference: [feature ownership matrix](docs/feature-maintenance.md#fe
 | Kubernetes control plane | `ubuntu_24.04-mgmt-01` through `03` | `ens192` |
 | Kubernetes workers / Longhorn | `ubuntu_24.04-wrk-01` through `03` | `ens33` |
 
+VM lifecycle ownership is host-scoped: ESXi 6.7 owns the three `mgmt` VMs, and ESXi 8 owns the three `wrk` VMs. The authoritative mapping is `managed_vm_esxi_ownership` in `inventories/production/group_vars/all.yml`; both hosts belong to `managed_vm_esxi`.
+
 The cluster uses kube-vip for the API virtual IP, MetalLB for service addresses, Calico VXLAN, and IPVS. Authoritative values are under `inventories/production/`; review them before using this repository elsewhere.
 
 ## Repository layout
@@ -124,26 +126,43 @@ ansible-playbook playbooks/99-site-run.yml --syntax-check
 
 Maintenance reference: [Ubuntu VM creation with Packer](docs/feature-maintenance.md#3-ubuntu-vm-creation-with-packer).
 
-Packer owns VM creation. Copy and review the examples:
+Packer owns VM creation. Create separate ignored common variable files for each ESXi host:
 
 ```bash
+cp packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl.example \
+  packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl
 cp packer/ubuntu-24.04/esxi-8.pkrvars.hcl.example \
-  packer/ubuntu-24.04/local.pkrvars.hcl
+  packer/ubuntu-24.04/esxi-8.pkrvars.hcl
 
-for file in packer/ubuntu-24.04/vms/esxi-8/*.pkrvars.hcl.example; do
-  cp "$file" "${file%.example}"
+for directory in esxi-6.7 esxi-8; do
+  for file in packer/ubuntu-24.04/vms/"$directory"/*.pkrvars.hcl.example; do
+    cp "$file" "${file%.example}"
+  done
 done
-
-packer/build-ubuntu-vms.sh
 ```
 
-Build one VM or resume a partial run:
+Build the control-plane VMs on ESXi 6.7 and workers on ESXi 8:
 
 ```bash
 packer/build-ubuntu-vms.sh \
-  packer/ubuntu-24.04/vms/esxi-8/mgmt-01.pkrvars.hcl
-packer/build-ubuntu-vms.sh --start-at \
-  packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
+  --common-var-file packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl \
+  --vm-var-dir packer/ubuntu-24.04/vms/esxi-6.7
+
+packer/build-ubuntu-vms.sh \
+  --common-var-file packer/ubuntu-24.04/esxi-8.pkrvars.hcl \
+  --vm-var-dir packer/ubuntu-24.04/vms/esxi-8
+```
+
+Build or resume one VM by passing its file explicitly with the matching common host file:
+
+```bash
+packer/build-ubuntu-vms.sh \
+  --common-var-file packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl \
+  packer/ubuntu-24.04/vms/esxi-6.7/mgmt-01.pkrvars.hcl
+
+packer/build-ubuntu-vms.sh \
+  --common-var-file packer/ubuntu-24.04/esxi-8.pkrvars.hcl \
+  --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
 ```
 
 Local `*.pkrvars.hcl` files may contain credentials and are ignored. Commit only sanitized `.example` files.
@@ -212,11 +231,13 @@ Longhorn workloads and application volumes should normally be reconciled by the 
 | `07`–`10`, `13`–`15` | Generate, deploy, validate, and reset Kubernetes |
 | `16-longhorn-node-prepare.yml` | Install Longhorn node prerequisites |
 | `18-project-sync.yml` | Synchronize project content |
-| `99-esxi-site.yml` | Reconcile the ESXi layer |
+| `99-esxi-site.yml` | Validate ESXi, gather facts, and power on all managed VMs |
 | `99-guest-discover.yml` | Discover and verify guests |
 | `99-guest-site.yml` | Reconcile managed guests |
 | `99-kubernetes-site.yml` | Run the Kubernetes workflow |
 | `99-site-run.yml` | Run the normal ESXi/guest workflow |
+
+`99-site-run.yml` composes `99-esxi-site.yml` and `99-guest-site.yml`, powering on every managed VM before guest reconciliation. Use `04-vm-power.yml -e vm_power_name=<name>` for a single-VM power operation.
 
 Unnumbered playbooks such as `site-esxi.yml`, `site-guest.yml`, `rotate-ssh-key.yml`, and `sync-project.yml` are compatibility wrappers. Prefer numbered entry points for new automation.
 
@@ -234,9 +255,9 @@ Example guarded deletion:
 
 ```bash
 ansible-playbook playbooks/05-vm-delete.yml \
-  -e vm_delete_name=ubuntu-24-04-wrk-01 \
+  -e vm_delete_name=ubuntu_24.04-wrk-01 \
   -e vm_delete_confirm=true \
-  -e vm_delete_confirm_name=ubuntu-24-04-wrk-01
+  -e vm_delete_confirm_name=ubuntu_24.04-wrk-01
 ```
 
 ## Troubleshooting

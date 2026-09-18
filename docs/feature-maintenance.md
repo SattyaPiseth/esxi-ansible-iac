@@ -62,6 +62,7 @@ Real `vault.yml`, `ssh_keys.yml`, and `.vaultpass` files are local secrets and i
 - Add a VM to the appropriate inventory groups.
 - Define `ansible_host` and `kubernetes_primary_interface` for every Kubernetes node.
 - Add host-specific placement or storage settings under `host_vars`.
+- Assign each managed VM exactly once in `managed_vm_esxi_ownership`; use the `managed_vm_esxi` group for lifecycle hosts.
 - Add shared platform settings to `group_vars/all.yml` only when they genuinely apply to the whole environment.
 - Update a sanitized example whenever a required secret key changes.
 
@@ -139,8 +140,8 @@ Creates Ubuntu 24.04 VMs and performs the initial unattended installation. Ansib
 packer init packer/ubuntu-24.04
 packer fmt -check -recursive packer/ubuntu-24.04
 packer validate \
-  -var-file=packer/ubuntu-24.04/local.pkrvars.hcl \
-  -var-file=packer/ubuntu-24.04/vms/esxi-8/mgmt-01.pkrvars.hcl \
+  -var-file=packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl \
+  -var-file=packer/ubuntu-24.04/vms/esxi-6.7/mgmt-01.pkrvars.hcl \
   packer/ubuntu-24.04
 ```
 
@@ -179,7 +180,7 @@ ansible-playbook playbooks/01-esxi-facts.yml
 ansible-playbook playbooks/03-vm-validate-managed.yml
 ```
 
-Power and deletion playbooks currently target `vm_esxi_8.0`. If VM ownership is split across ESXi hosts, make placement host-scoped before extending those operations.
+Power, validation, discovery, recovery, and deletion target `managed_vm_esxi`. The `managed_vm_esxi_ownership` map routes each VM only to its owning ESXi host and must assign every `managed_vms` member exactly once.
 
 Never weaken deletion confirmations to simplify automation.
 

@@ -9,6 +9,8 @@ esxi_validate_certs: true
 esxi_datacenter: "ha-datacenter"
 esxi_default_folder: "/ha-datacenter/vm"
 
+esxi_managed_vm_names: "{{ managed_vm_esxi_ownership[inventory_hostname] | default([]) }}"
+
 esxi_allowed_power_states:
   - powered-on
   - powered-off

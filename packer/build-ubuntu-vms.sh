@@ -29,7 +29,7 @@ Examples:
   packer/build-ubuntu-vms.sh --common-var-file packer/ubuntu-24.04/esxi-8.pkrvars.hcl
   packer/build-ubuntu-vms.sh --vm-var-dir packer/ubuntu-24.04/vms/esxi-8
   packer/build-ubuntu-vms.sh --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
-  packer/build-ubuntu-vms.sh --force packer/ubuntu-24.04/vms/esxi-8/mgmt-01.pkrvars.hcl
+  packer/build-ubuntu-vms.sh --force packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
   packer/build-ubuntu-vms.sh --force --on-error ask
 USAGE
 }

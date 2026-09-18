@@ -1,6 +1,6 @@
 ---
 - name: Render Kubespray inventory from managed Ubuntu VMs
-  hosts: vm_esxi_8.0
+  hosts: control_node
   gather_facts: false
 
   roles:

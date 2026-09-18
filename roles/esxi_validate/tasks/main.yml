@@ -12,3 +12,30 @@
     that:
       - esxi_validate_certs is boolean
     fail_msg: "esxi_validate_certs must be true or false."
+
+- name: Validate managed VM ownership inputs
+  ansible.builtin.assert:
+    that:
+      - managed_vm_esxi_ownership is mapping
+      - managed_vm_esxi_ownership.keys() | difference(groups['managed_vm_esxi']) | length == 0
+      - groups['managed_vm_esxi'] | difference(managed_vm_esxi_ownership.keys()) | length == 0
+      - esxi_managed_vm_names is sequence
+      - esxi_managed_vm_names is not string
+      - esxi_managed_vm_names | length > 0
+      - esxi_managed_vm_names | unique | list | length == esxi_managed_vm_names | length
+    fail_msg: >-
+      Every managed_vm_esxi host must own a non-empty, unique VM list in
+      managed_vm_esxi_ownership.
+  when: inventory_hostname in groups['managed_vm_esxi']
+
+- name: Validate complete and unique managed VM ownership
+  ansible.builtin.assert:
+    that:
+      - managed_vm_names | length > 0
+      - managed_vm_names | unique | list | length == managed_vm_names | length
+      - managed_vm_names | difference(groups['managed_vms']) | length == 0
+      - groups['managed_vms'] | difference(managed_vm_names) | length == 0
+    fail_msg: >-
+      managed_vm_esxi_ownership must assign every managed_vms host exactly once.
+  run_once: true
+  when: inventory_hostname in groups['managed_vm_esxi']

@@ -11,8 +11,8 @@
   roles:
     - esxi_facts
 
-- name: Power VM on standalone ESXi
-  hosts: vm_esxi_8.0
-  gather_facts: false
-  roles:
-    - vm_power
+- name: Power on all managed VMs
+  ansible.builtin.import_playbook: 04-vm-power.yml
+  vars:
+    scope: all
+    vm_power_state: powered-on

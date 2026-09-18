@@ -1,4 +1,9 @@
 ---
+- name: Select SSH recovery VMs owned by this ESXi host
+  ansible.builtin.set_fact:
+    guest_ssh_recovery_host_vm_names: >-
+      {{ guest_ssh_recovery_vm_names | intersect(esxi_managed_vm_names) | list }}
+
 - name: Validate guest SSH recovery request
   ansible.builtin.assert:
     that:
@@ -22,7 +27,7 @@
       - hostvars[item].guest_authorized_key_file is defined
       - hostvars[item].guest_authorized_key_file | length > 0
     fail_msg: "Guest credentials or public key path are incomplete for {{ item }}."
-  loop: "{{ guest_ssh_recovery_vm_names }}"
+  loop: "{{ guest_ssh_recovery_host_vm_names }}"
   no_log: true
 
 # This is an emergency transport exception: authorized_key cannot run over SSH
@@ -52,6 +57,6 @@
       chmod 0700 "$home/.ssh"; chmod 0600 "$home/.ssh/authorized_keys"'
     wait_for_process: true
     timeout: "{{ guest_ssh_recovery_timeout }}"
-  loop: "{{ guest_ssh_recovery_vm_names }}"
+  loop: "{{ guest_ssh_recovery_host_vm_names }}"
   delegate_to: localhost
   no_log: true

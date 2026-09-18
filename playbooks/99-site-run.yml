@@ -1,21 +1,6 @@
 ---
-- name: Validate ESXi
-  hosts: vm_esxi_8.0
-  gather_facts: false
-  roles:
-    - esxi_validate
+- name: Reconcile ESXi and managed VM power
+  ansible.builtin.import_playbook: 99-esxi-site.yml
 
-- name: Show ESXi facts
-  hosts: vm_esxi_8.0
-  gather_facts: false
-  roles:
-    - esxi_facts
-
-- name: Power selected VM
-  hosts: vm_esxi_8.0
-  gather_facts: false
-  roles:
-    - vm_power
-
-- name: Prepare Linux guests
+- name: Reconcile managed Linux guests
   ansible.builtin.import_playbook: 99-guest-site.yml

@@ -1,6 +1,6 @@
 ---
 - name: Render Kubespray inventory for MetalLB
-  hosts: vm_esxi_8.0
+  hosts: control_node
   gather_facts: false
 
   roles:

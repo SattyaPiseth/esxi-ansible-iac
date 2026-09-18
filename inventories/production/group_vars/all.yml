@@ -1,9 +1,6 @@
 ---
-env_name: production
 timezone: Asia/Phnom_Penh
 ansible_python_interpreter: /usr/bin/python3
-
-project_name: "esxi-ansible-iac"
 
 guest_credential_source: ubuntu_24.04-mgmt-01
 control_node_prerequisites_vmware_venv_dir: "{{ inventory_dir }}/../../.venv/vmware"
@@ -11,9 +8,19 @@ control_node_prerequisites_vmware_venv_dir: "{{ inventory_dir }}/../../.venv/vmw
 kubespray_cluster_name: production
 kubespray_inventory_output_dir: "{{ playbook_dir }}/../.generated/kubespray/{{ kubespray_cluster_name }}"
 
-# Single-ESXi-host assumption: VM lifecycle playbooks target vm_esxi_8.0.
-# If managed VMs are split across multiple ESXi hosts, make this host-scoped.
-managed_vm_names: "{{ groups['managed_vms'] | default([]) }}"
+# Each managed VM must be owned by exactly one ESXi inventory host.
+managed_vm_esxi_ownership:
+  vm_esxi_6.7:
+    - ubuntu_24.04-mgmt-01
+    - ubuntu_24.04-mgmt-02
+    - ubuntu_24.04-mgmt-03
+  vm_esxi_8.0:
+    - ubuntu_24.04-wrk-01
+    - ubuntu_24.04-wrk-02
+    - ubuntu_24.04-wrk-03
+
+managed_vm_names: >-
+  {{ managed_vm_esxi_ownership.values() | flatten | list }}
 
 kubespray_inventory_control_plane_vm_names: "{{ groups['kube_control_plane'] | default([]) }}"
 

@@ -6,7 +6,7 @@
     - role: guest_auth_validate
 
 - name: Recover managed guest SSH keys through VMware Tools
-  hosts: vmware_esxi
+  hosts: managed_vm_esxi
   gather_facts: false
   roles:
     - role: esxi_validate

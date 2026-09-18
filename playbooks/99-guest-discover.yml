@@ -1,15 +1,15 @@
 ---
 - name: Power VMs and discover current guest IPs
-  hosts: vm_esxi_8.0
+  hosts: managed_vm_esxi
   gather_facts: false
   vars:
     discovered_guest_group: discovered_managed_vms
     vm_discovery_scope: "{{ scope | default('single') }}"
     vm_discovery_targets: >-
       {{
-        managed_vm_names
+        esxi_managed_vm_names
         if vm_discovery_scope == 'all'
-        else [vm_power_name]
+        else ([vm_power_name] if (vm_power_name | default('')) in esxi_managed_vm_names else [])
       }}
     vm_power_state: powered-on
   roles:
@@ -26,7 +26,6 @@
         that:
           - vm_discovery_targets is sequence
           - vm_discovery_targets is not string
-          - vm_discovery_targets | length > 0
           - vm_power_state == 'powered-on'
           - guest_credential_source is defined
           - guest_credential_source in hostvars
@@ -36,8 +35,16 @@
             or hostvars[guest_credential_source].ansible_ssh_private_key_file is defined
           - hostvars[guest_credential_source].guest_become_ready | bool
         fail_msg: >-
-          Use this playbook only with vm_power_state=powered-on, a non-empty
+          Use this playbook only with vm_power_state=powered-on, a host-owned
           VM discovery target list, and a valid guest_credential_source.
+
+    - name: Validate requested discovery target
+      ansible.builtin.assert:
+        that:
+          - vm_discovery_scope == 'all' or (vm_power_name | default('')) | string | trim | length > 0
+          - vm_discovery_scope == 'all' or (vm_power_name | default('')) in managed_vm_names
+        fail_msg: "Pass -e vm_power_name=<managed-name>, or use -e scope=all."
+      run_once: true
 
     - name: Apply requested power state to each selected VM
       ansible.builtin.include_role:

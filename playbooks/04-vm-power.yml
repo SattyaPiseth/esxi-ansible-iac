@@ -1,37 +1,45 @@
 ---
-- name: Manage VM power state
-  hosts: vm_esxi_8.0
+- name: Manage VM power state on its owning ESXi host
+  hosts: managed_vm_esxi
   gather_facts: false
   vars:
     vm_power_scope: "{{ scope | default('single') }}"
     vm_power_targets: >-
       {{
-        managed_vm_names
+        esxi_managed_vm_names
         if vm_power_scope == 'all'
-        else [vm_power_name]
+        else (
+          [vm_power_name]
+          if (vm_power_name | default('')) in esxi_managed_vm_names
+          else []
+        )
       }}
 
   roles:
     - esxi_validate
 
   tasks:
-    - name: Validate VM power scope
+    - name: Validate VM power request
       ansible.builtin.assert:
         that:
           - vm_power_scope in ['single', 'all']
-        fail_msg: "Set scope to either 'single' or 'all'."
+          - vm_power_scope == 'all' or (vm_power_name | default('')) | string | trim | length > 0
+          - vm_power_scope == 'all' or (vm_power_name | default('')) in managed_vm_names
+        fail_msg: >-
+          Pass -e vm_power_name=<managed-name>, or use -e scope=all.
+      run_once: true
 
-    - name: Validate VM power target list
+    - name: Validate host-owned VM power targets
       ansible.builtin.assert:
         that:
           - vm_power_targets is sequence
           - vm_power_targets is not string
-          - vm_power_targets | length > 0
           - vm_power_targets | reject('string') | list | length == 0
           - vm_power_targets | map('trim') | reject('equalto', '') | list | length == vm_power_targets | length
-        fail_msg: "Pass -e vm_power_name=<name>, or use -e scope=all with managed_vm_names."
+          - vm_power_targets | difference(esxi_managed_vm_names) | length == 0
+        fail_msg: "Power targets must belong to {{ inventory_hostname }}."
 
-    - name: Apply requested power state to selected VMs
+    - name: Apply requested power state to host-owned VMs
       ansible.builtin.include_role:
         name: vm_power
       vars:
