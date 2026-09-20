@@ -173,10 +173,58 @@ Validates ESXi credentials and placement, gathers facts, lists VMs, verifies man
 - `esxi_hostname`, `esxi_username`, `esxi_password`
 - `esxi_validate_certs`
 - `esxi_datacenter`, `esxi_default_folder`
-- `managed_vm_names`
+- `managed_vm_esxi_ownership`: authoritative ESXi-to-VM ownership map
+- `managed_vm_names`: complete VM list derived from the ownership map
+- `esxi_managed_vm_names`: per-ESXi list derived at execution time
 - `vm_power_state`
 - `vm_delete_confirm`, `vm_delete_confirm_name`
 - Optional UUID and delete-all confirmations
+
+### Inspect ownership and power targets
+
+`ansible-inventory --host` can display the literal Jinja expression for a
+derived variable. This is expected because `esxi_managed_vm_names` depends on
+the current `inventory_hostname`. Use the debug module to evaluate it in each
+ESXi host's context:
+
+```bash
+ansible managed_vm_esxi \
+  -m ansible.builtin.debug \
+  -a 'var=esxi_managed_vm_names'
+```
+
+Use these keys when reasoning about scope:
+
+| Key | Meaning |
+|---|---|
+| `managed_vm_esxi` | ESXi inventory group allowed to manage VM lifecycle |
+| `managed_vm_esxi_ownership` | Source-of-truth mapping from ESXi aliases to owned VM aliases |
+| `managed_vm_names` | Flattened list of every managed VM |
+| `esxi_managed_vm_names` | VMs owned by the current ESXi host |
+| `vm_power_name` | One explicitly selected managed VM |
+| `scope=all` | Select every managed VM; each ESXi processes only its own list |
+| `vm_power_state` | Requested state, such as `powered-on` or `powered-off` |
+
+Preview one VM without changing its power state:
+
+```bash
+ansible-playbook playbooks/04-vm-power.yml \
+  --check \
+  -e vm_power_name=ubuntu_24.04-wrk-01 \
+  -e vm_power_state=powered-on
+```
+
+Preview all managed VMs:
+
+```bash
+ansible-playbook playbooks/04-vm-power.yml \
+  --check \
+  -e scope=all \
+  -e vm_power_state=powered-on
+```
+
+Do not infer evaluated ownership from an unresolved `ansible-inventory --host`
+value. Use the debug command above or the playbook's check-mode output.
 
 ### Validate
 

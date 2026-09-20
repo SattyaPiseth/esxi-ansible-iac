@@ -279,6 +279,8 @@ Supporting guide: [Kubernetes health and operator kubeconfig](docs/feature-maint
 # Inventory and variables
 ansible-inventory --graph
 ansible-inventory --host ubuntu_24.04-mgmt-01
+ansible managed_vm_esxi -m ansible.builtin.debug \
+  -a 'var=esxi_managed_vm_names'
 ansible-playbook playbooks/00-validate.yml -vv
 
 # SSH
@@ -290,6 +292,12 @@ kubectl get nodes -o wide
 kubectl get pods -A
 kubectl get events -A --sort-by=.lastTimestamp
 ```
+
+Derived variables can remain as literal Jinja expressions in
+`ansible-inventory --host` output. Use `ansible.builtin.debug` as shown above
+to evaluate `esxi_managed_vm_names` separately for each ESXi host. See
+[ESXi ownership and target inspection](docs/feature-maintenance.md#inspect-ownership-and-power-targets)
+for the key definitions and safe `04-vm-power.yml` previews.
 
 Treat failed probes as symptoms: inspect pod events, logs, resources, and dependencies before restarting or redeploying.
 
