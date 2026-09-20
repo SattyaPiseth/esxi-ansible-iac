@@ -1,18 +1,32 @@
 packer {
+  required_version = "= 1.16.1"
+
   required_plugins {
     vsphere = {
-      source  = "github.com/vmware/vsphere"
-      version = ">= 2.1.2"
+      source = "github.com/vmware/vsphere"
+      # v1.2.7 keeps REST authentication lazy, which supports direct builds
+      # against standalone ESXi. v2.5.0 requires the vCenter CIS REST API.
+      version = "= 1.2.7"
     }
   }
 }
 
 variable "esxi_hostname" {
   type = string
+
+  validation {
+    condition     = length(trimspace(var.esxi_hostname)) > 0
+    error_message = "The esxi_hostname value must not be empty."
+  }
 }
 
 variable "esxi_username" {
   type = string
+
+  validation {
+    condition     = length(trimspace(var.esxi_username)) > 0
+    error_message = "The esxi_username value must not be empty."
+  }
 }
 
 variable "esxi_password" {
@@ -22,7 +36,7 @@ variable "esxi_password" {
 
 variable "esxi_insecure_connection" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "esxi_datacenter" {
@@ -51,13 +65,22 @@ variable "ubuntu_iso_name" {
 }
 
 variable "vm_name" {
-  type    = string
-  default = "ubuntu_24.04-mgmt-01"
+  type = string
+
+  validation {
+    condition     = length(trimspace(var.vm_name)) > 0
+    error_message = "The vm_name value must not be empty."
+  }
 }
 
 variable "guest_hostname" {
   type    = string
   default = ""
+
+  validation {
+    condition     = var.guest_hostname == "" || can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", var.guest_hostname))
+    error_message = "The guest_hostname value must be empty or a lowercase DNS label of at most 63 characters."
+  }
 }
 
 variable "vm_network" {
@@ -73,26 +96,51 @@ variable "vm_resource_pool" {
 variable "vm_firmware" {
   type    = string
   default = "efi"
+
+  validation {
+    condition     = contains(["efi", "bios"], var.vm_firmware)
+    error_message = "The vm_firmware value must be efi or bios."
+  }
 }
 
 variable "vm_cpu" {
   type    = number
   default = 2
+
+  validation {
+    condition     = var.vm_cpu >= 1 && floor(var.vm_cpu) == var.vm_cpu
+    error_message = "The vm_cpu value must be a positive integer."
+  }
 }
 
 variable "vm_memory_mb" {
   type    = number
   default = 2048
+
+  validation {
+    condition     = var.vm_memory_mb >= 2048 && floor(var.vm_memory_mb) == var.vm_memory_mb
+    error_message = "The vm_memory_mb value must be an integer of at least 2048."
+  }
 }
 
 variable "vm_disk_mb" {
   type    = number
   default = 40960
+
+  validation {
+    condition     = var.vm_disk_mb >= 20480 && floor(var.vm_disk_mb) == var.vm_disk_mb
+    error_message = "The vm_disk_mb value must be an integer of at least 20480."
+  }
 }
 
 variable "ssh_username" {
   type    = string
   default = "sysadmin"
+
+  validation {
+    condition     = length(trimspace(var.ssh_username)) > 0
+    error_message = "The ssh_username value must not be empty."
+  }
 }
 
 variable "ssh_password" {
@@ -106,8 +154,12 @@ variable "ssh_password_hash" {
 }
 
 variable "ssh_authorized_key" {
-  type    = string
-  default = ""
+  type = string
+
+  validation {
+    condition     = can(regex("^ssh-(ed25519|rsa) [A-Za-z0-9+/=]+(?: .*)?$", trimspace(var.ssh_authorized_key)))
+    error_message = "The ssh_authorized_key value must contain one OpenSSH ed25519 or RSA public key."
+  }
 }
 
 variable "ip_settle_timeout" {

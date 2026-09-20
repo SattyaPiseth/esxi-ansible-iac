@@ -14,14 +14,14 @@ esxi_iso_directory = "ISO"
 # Keep EFI on this ESXi 6.7 host. BIOS fell through to PXE with this ISO.
 vm_firmware = "efi"
 
-# ESXi 6.7 can expose the EFI console later than newer ESXi hosts, but waiting
-# too long lets Ubuntu leave GRUB and reach the interactive language screen.
-boot_wait = "36s"
+# Qualified on standalone ESXi 6.7: inject while GRUB is still editable.
+boot_wait = "20s"
 
-# Older standalone ESXi consoles may drop fast key groups during boot editing.
-boot_keygroup_interval = "1000ms"
+# Older standalone ESXi consoles require slower virtual key groups.
+boot_keygroup_interval = "1500ms"
 
 # Keep only values that differ from the defaults in ubuntu-24.04.pkr.hcl.
 # Use PKR_VAR_* environment variables for secrets if you do not want them in a file.
-ssh_password = "REPLACE_WITH_TEMPORARY_PASSWORD"
-ssh_password_hash = "$6$REPLACE_WITH_SHA512_HASH"
+ssh_password       = "REPLACE_WITH_TEMPORARY_PASSWORD"
+ssh_password_hash  = "$6$REPLACE_WITH_SHA512_HASH"
+ssh_authorized_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIREPLACEWITHPUBLICKEY esxi-ansible"

@@ -29,7 +29,7 @@ Maintenance reference: [feature ownership matrix](docs/feature-maintenance.md#fe
 - Kubernetes health validation and guarded reset.
 - Longhorn node preparation and production Helm values.
 - Confirmation gates for destructive operations.
-- CI with YAML lint, Ansible lint, and playbook syntax checks.
+- CI with Packer validation, YAML lint, Ansible lint, and playbook syntax checks.
 
 ## Current topology
 
@@ -58,12 +58,16 @@ docs/                     Focused operational documentation
 ## Maintenance documentation
 
 - [Documentation index](docs/README.md) — map from operator workflows to feature ownership and detailed procedures.
+- [Ansible architecture and workflow](docs/ansible-architecture-and-workflow.md) — advanced execution model, inventory/variable resolution, safety contracts, module policy, and official references.
 - [Feature maintenance guide](docs/feature-maintenance.md) — ownership, variables, update procedure, validation, and risks for every supported feature.
 - [kube-vip per-node interface guide](docs/kube-vip-per-node-interface.md) — control-plane interface, reconciliation, verification, and rollback.
 
 ## Prerequisites
 
-Run commands from the repository root. The control machine needs Python 3 with `venv`, Ansible, Packer, Git, and access to ESXi and the guest subnet. Post-deployment work also needs `kubectl` and Helm.
+Run commands from the repository root. The control machine needs Python 3 with
+`venv`, Ansible, Packer 1.16.1, Git, and access to ESXi and the guest subnet.
+The standalone ESXi workflow pins the vSphere plugin to 1.2.7. Post-deployment
+work also needs `kubectl` and Helm.
 
 Examples assume the operator uses `~/.ssh/esxi_ansible_ed25519` and its matching `.pub` file.
 
@@ -150,28 +154,28 @@ done
 Build the control-plane VMs on ESXi 6.7 and workers on ESXi 8:
 
 ```bash
-packer/build-ubuntu-vms.sh \
-  --common-var-file packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl \
-  --vm-var-dir packer/ubuntu-24.04/vms/esxi-6.7
-
-packer/build-ubuntu-vms.sh \
-  --common-var-file packer/ubuntu-24.04/esxi-8.pkrvars.hcl \
-  --vm-var-dir packer/ubuntu-24.04/vms/esxi-8
+packer/build-ubuntu-vms.sh --target esxi-6.7
+packer/build-ubuntu-vms.sh --target esxi-8
 ```
 
-Build or resume one VM by passing its file explicitly with the matching common host file:
+Preview validation without creating a VM, or build/resume one VM:
 
 ```bash
-packer/build-ubuntu-vms.sh \
-  --common-var-file packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl \
-  packer/ubuntu-24.04/vms/esxi-6.7/mgmt-01.pkrvars.hcl
+packer/build-ubuntu-vms.sh --target esxi-6.7 --validate-only
 
 packer/build-ubuntu-vms.sh \
-  --common-var-file packer/ubuntu-24.04/esxi-8.pkrvars.hcl \
+  --target esxi-8 \
+  packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
+
+packer/build-ubuntu-vms.sh \
+  --target esxi-8 \
   --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
 ```
 
-Local `*.pkrvars.hcl` files may contain credentials and are ignored. Commit only sanitized `.example` files.
+The required target prevents mixing one ESXi host's common variables with the
+other host's VM definitions. Local `*.pkrvars.hcl` files may contain credentials
+and are ignored. Commit only sanitized `.example` files. ESXi 6.7 uses the
+qualified `20s` boot wait and `1500ms` key-group interval from its common file.
 
 ## Reconcile guests
 
@@ -306,6 +310,7 @@ Treat failed probes as symptoms: inspect pod events, logs, resources, and depend
 Maintenance reference: [CI and repository quality](docs/feature-maintenance.md#13-ci-and-repository-quality).
 
 ```bash
+scripts/validate-packer.sh
 pre-commit run --all-files
 git diff --check
 git diff --stat

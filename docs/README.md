@@ -8,6 +8,7 @@ Start with the [project README](../README.md) for installation and normal operat
 
 | Topic | Operator workflow | Maintenance reference |
 |---|---|---|
+| Ansible architecture and execution | [Canonical playbooks](../README.md#canonical-playbooks) | [Ansible architecture and workflow](ansible-architecture-and-workflow.md) |
 | Inventory and secrets | [First-time setup](../README.md#first-time-setup) | [Inventory and secrets](feature-maintenance.md#1-inventory-and-secrets) |
 | Control node | [Install dependencies](../README.md#1-install-dependencies) | [Control-node dependencies](feature-maintenance.md#2-control-node-dependencies) |
 | Ubuntu VM builds | [Build Ubuntu VMs](../README.md#build-ubuntu-vms) | [Packer maintenance](feature-maintenance.md#3-ubuntu-vm-creation-with-packer) |
@@ -44,6 +45,15 @@ Use [feature-maintenance.md](feature-maintenance.md) for:
 - configuration update procedures;
 - feature-specific validation;
 - maintenance risks and boundaries.
+
+### Ansible architecture and workflow
+
+Use [ansible-architecture-and-workflow.md](ansible-architecture-and-workflow.md) for:
+
+- inventory selection, variable resolution, and host-scoped ownership;
+- playbook/role composition and execution flow;
+- preflight, check-mode, safety, and validation contracts;
+- module provenance, collection support boundaries, and official references.
 
 ### kube-vip interface guide
 

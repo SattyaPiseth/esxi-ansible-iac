@@ -13,5 +13,6 @@ vm_firmware = "efi"
 
 # Keep only values that differ from the defaults in ubuntu-24.04.pkr.hcl.
 # Use PKR_VAR_* environment variables for secrets if you do not want them in a file.
-ssh_password = "REPLACE_WITH_TEMPORARY_PASSWORD"
-ssh_password_hash = "$6$REPLACE_WITH_SHA512_HASH"
+ssh_password       = "REPLACE_WITH_TEMPORARY_PASSWORD"
+ssh_password_hash  = "$6$REPLACE_WITH_SHA512_HASH"
+ssh_authorized_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIREPLACEWITHPUBLICKEY esxi-ansible"

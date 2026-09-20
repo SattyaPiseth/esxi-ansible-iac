@@ -137,21 +137,37 @@ Creates Ubuntu 24.04 VMs and performs the initial unattended installation. Ansib
 - Put VM-specific CPU, memory, disk, datastore, and name settings in per-VM files.
 - Keep real `*.pkrvars.hcl` files untracked.
 - Update sanitized examples whenever required variables change.
-- Always pass the matching common variable file and VM directory together:
-  `esxi-6.7` for management VMs and `esxi-8` for worker VMs.
+- Select exactly one build scope with `--target`: `esxi-6.7` for management VMs
+  or `esxi-8` for worker VMs. The wrapper derives the matching common file and
+  VM directory and rejects cross-target VM files.
+- Install the managed SSH public key during autoinstall. The password is a
+  temporary Packer bootstrap credential, not the long-term operator credential.
+- Treat Packer 1.16.1 and the vSphere plugin 1.2.7 as the standalone-ESXi
+  qualification toolchain. Plugin 2.5.0 requires a vCenter CIS REST login and
+  fails during `StepConnect` against both standalone hosts. Re-evaluate the
+  plugin pin after introducing vCenter or retiring the standalone workflow.
+- Keep the qualified ESXi 6.7 boot timing in its common file: `boot_wait =
+  "20s"` and `boot_keygroup_interval = "1500ms"`. Occasional recoverable
+  virtual-key release warnings may appear, but a successful build must fetch
+  cloud-init data, connect over SSH, provision, and shut down cleanly.
 
 ### Validate
 
 ```bash
-packer init packer/ubuntu-24.04
-packer fmt -check -recursive packer/ubuntu-24.04
-packer validate \
-  -var-file=packer/ubuntu-24.04/esxi-6.7.pkrvars.hcl \
-  -var-file=packer/ubuntu-24.04/vms/esxi-6.7/mgmt-01.pkrvars.hcl \
-  packer/ubuntu-24.04
+scripts/validate-packer.sh
+packer/build-ubuntu-vms.sh --target esxi-6.7 --validate-only
+packer/build-ubuntu-vms.sh --target esxi-8 --validate-only
 ```
 
-A Packer build creates or replaces infrastructure. Validation is safe; building requires a separate operator decision.
+The reusable script validates all committed examples and is also run by CI.
+The wrapper validates local values for one target. A Packer build creates or
+replaces infrastructure; omit `--validate-only` only after a separate operator
+decision.
+
+Official references: [Packer init](https://developer.hashicorp.com/packer/docs/commands/init),
+[Packer validate](https://developer.hashicorp.com/packer/docs/commands/validate),
+[input variable validation](https://developer.hashicorp.com/packer/docs/templates/hcl_templates/variables),
+and the [VMware vSphere ISO builder](https://developer.hashicorp.com/packer/integrations/vmware/vsphere/latest/components/builder/vsphere-iso).
 
 ## 4. ESXi validation and VM lifecycle
 
@@ -518,12 +534,14 @@ The target must be a managed inventory host and use a protected private key. Syn
 
 ### Purpose
 
-Ensures inventory can load and committed YAML/Ansible content remains valid.
+Ensures inventory can load and committed Packer, YAML, and Ansible content
+remains valid.
 
 ### Owned files
 
 - `.github/workflows/validate.yml`
 - `.pre-commit-config.yaml`
+- `scripts/validate-packer.sh`
 - `.yamllint.yml`
 - `.ansible-lint`
 - `requirements-dev.txt`
@@ -532,6 +550,7 @@ Ensures inventory can load and committed YAML/Ansible content remains valid.
 ### Current checks
 
 - Production inventory graph
+- Packer formatting and every committed ESXi/VM example combination
 - YAML lint
 - Ansible lint
 - Syntax check for every playbook
@@ -540,6 +559,7 @@ Ensures inventory can load and committed YAML/Ansible content remains valid.
 
 ```bash
 source .venv/vmware/bin/activate
+scripts/validate-packer.sh
 PATH="$PWD/.venv/vmware/bin:$PATH" \
   .venv/vmware/bin/pre-commit run --all-files
 git diff --check

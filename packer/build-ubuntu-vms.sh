@@ -3,8 +3,8 @@
 set -euo pipefail
 
 PACKER_DIR="packer/ubuntu-24.04"
-COMMON_VAR_FILE="$PACKER_DIR/local.pkrvars.hcl"
-VM_VAR_DIR="$PACKER_DIR/vms/esxi-8"
+TARGET=""
+VALIDATE_ONLY=false
 FORCE=false
 ON_ERROR=""
 START_AT=""
@@ -12,25 +12,24 @@ VM_FILES=()
 
 usage() {
   cat <<'USAGE'
-Usage: packer/build-ubuntu-vms.sh [options] [vm-var-file ...]
+Usage: packer/build-ubuntu-vms.sh --target <esxi-6.7|esxi-8> [options] [vm-var-file ...]
 
-Build Ubuntu VMs with one optional common local var file and one VM var file per VM.
+Validate or build Ubuntu VMs for one explicitly selected ESXi target. The target
+selects both the common variable file and the directory containing VM variables.
 
 Options:
-  -f, --force             Pass --force to packer build
-  --common-var-file FILE  Use a common ESXi/credential var file instead of local.pkrvars.hcl
-  --vm-var-dir DIR        Discover VM var files from this directory
-  --on-error <action>     Pass -on-error=<action> to packer build, e.g. ask
-  --start-at FILE         Continue from this VM var file after a partial run
-  -h, --help              Show this help
+  --target TARGET     Required ESXi target: esxi-6.7 or esxi-8
+  --validate-only     Initialize, format-check, and validate; do not build VMs
+  -f, --force         Pass --force to packer build
+  --on-error ACTION   Pass -on-error=ACTION to packer build, for example ask
+  --start-at FILE     Continue from this VM variable file after a partial run
+  -h, --help          Show this help
 
 Examples:
-  packer/build-ubuntu-vms.sh
-  packer/build-ubuntu-vms.sh --common-var-file packer/ubuntu-24.04/esxi-8.pkrvars.hcl
-  packer/build-ubuntu-vms.sh --vm-var-dir packer/ubuntu-24.04/vms/esxi-8
-  packer/build-ubuntu-vms.sh --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
-  packer/build-ubuntu-vms.sh --force packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
-  packer/build-ubuntu-vms.sh --force --on-error ask
+  packer/build-ubuntu-vms.sh --target esxi-6.7 --validate-only
+  packer/build-ubuntu-vms.sh --target esxi-8
+  packer/build-ubuntu-vms.sh --target esxi-8 packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
+  packer/build-ubuntu-vms.sh --target esxi-8 --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-02.pkrvars.hcl
 USAGE
 }
 
@@ -41,6 +40,15 @@ die() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --target)
+      TARGET="${2:-}"
+      [[ -n "$TARGET" ]] || die "Missing value for --target"
+      shift 2
+      ;;
+    --validate-only)
+      VALIDATE_ONLY=true
+      shift
+      ;;
     -f|--force)
       FORCE=true
       shift
@@ -48,18 +56,6 @@ while [[ $# -gt 0 ]]; do
     --on-error)
       ON_ERROR="${2:-}"
       [[ -n "$ON_ERROR" ]] || die "Missing value for --on-error"
-      shift 2
-      ;;
-    --common-var-file)
-      COMMON_VAR_FILE="${2:-}"
-      [[ -n "$COMMON_VAR_FILE" ]] || die "Missing value for --common-var-file"
-      [[ -f "$COMMON_VAR_FILE" ]] || die "Missing common var file: $COMMON_VAR_FILE"
-      shift 2
-      ;;
-    --vm-var-dir)
-      VM_VAR_DIR="${2:-}"
-      [[ -n "$VM_VAR_DIR" ]] || die "Missing value for --vm-var-dir"
-      [[ -d "$VM_VAR_DIR" ]] || die "Missing VM var directory: $VM_VAR_DIR"
       shift 2
       ;;
     --start-at)
@@ -72,6 +68,9 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
+    --*)
+      die "Unknown option: $1"
+      ;;
     *)
       VM_FILES+=("$1")
       shift
@@ -79,17 +78,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -f "$COMMON_VAR_FILE" ]]; then
-  COMMON_VAR_ARGS=(-var-file="$COMMON_VAR_FILE")
-else
-  COMMON_VAR_ARGS=()
-fi
+case "$TARGET" in
+  esxi-6.7|esxi-8) ;;
+  "") die "Pass an explicit target with --target esxi-6.7 or --target esxi-8" ;;
+  *) die "Unsupported target '$TARGET'; expected esxi-6.7 or esxi-8" ;;
+esac
+
+command -v packer >/dev/null 2>&1 || die "Packer 1.16.1 is required but was not found in PATH. Install it from https://developer.hashicorp.com/packer/install"
+
+COMMON_VAR_FILE="$PACKER_DIR/$TARGET.pkrvars.hcl"
+VM_VAR_DIR="$PACKER_DIR/vms/$TARGET"
+
+[[ -f "$COMMON_VAR_FILE" ]] || die "Missing common var file: $COMMON_VAR_FILE (copy its .example file first)"
+[[ -d "$VM_VAR_DIR" ]] || die "Missing VM var directory: $VM_VAR_DIR"
 
 if [[ ${#VM_FILES[@]} -eq 0 ]]; then
   mapfile -t VM_FILES < <(find "$VM_VAR_DIR" -maxdepth 1 -type f -name '*.pkrvars.hcl' | sort)
 fi
 
-[[ ${#VM_FILES[@]} -gt 0 ]] || die "No VM var files found. Copy examples from $VM_VAR_DIR/*.example to *.pkrvars.hcl first."
+[[ ${#VM_FILES[@]} -gt 0 ]] || die "No VM var files found. Copy examples in $VM_VAR_DIR to *.pkrvars.hcl first."
+
+for vm_file in "${VM_FILES[@]}"; do
+  [[ -f "$vm_file" ]] || die "Missing VM var file: $vm_file"
+  case "$vm_file" in
+    "$VM_VAR_DIR"/*) ;;
+    *) die "VM var file '$vm_file' does not belong to target '$TARGET' ($VM_VAR_DIR)" ;;
+  esac
+done
 
 if [[ -n "$START_AT" ]]; then
   RESUME_FILES=()
@@ -102,30 +117,34 @@ if [[ -n "$START_AT" ]]; then
       RESUME_FILES+=("$vm_file")
     fi
   done
-  if [[ "$START_FOUND" != "true" ]]; then
-    die "Start-at file is not in the selected VM file list: $START_AT"
-  fi
+  [[ "$START_FOUND" == "true" ]] || die "Start-at file is not in the selected VM file list: $START_AT"
   VM_FILES=("${RESUME_FILES[@]}")
 fi
 
+echo "Target: $TARGET"
+echo "Common variables: $COMMON_VAR_FILE"
+printf 'VM variables: %s\n' "${VM_FILES[@]}"
+
 packer init "$PACKER_DIR"
-packer fmt "$PACKER_DIR"
+packer fmt -check -recursive "$PACKER_DIR"
 
 for vm_file in "${VM_FILES[@]}"; do
-  [[ -f "$vm_file" ]] || die "Missing VM var file: $vm_file"
-
   echo "Validating $vm_file"
   packer validate \
-    "${COMMON_VAR_ARGS[@]}" \
+    -var-file="$COMMON_VAR_FILE" \
     -var-file="$vm_file" \
     "$PACKER_DIR"
+
+  if [[ "$VALIDATE_ONLY" == "true" ]]; then
+    continue
+  fi
 
   cmd=(packer build)
   if [[ "$FORCE" == "true" ]]; then
     cmd+=(--force)
   fi
   [[ -z "$ON_ERROR" ]] || cmd+=("-on-error=$ON_ERROR")
-  cmd+=( "${COMMON_VAR_ARGS[@]}" -var-file="$vm_file" "$PACKER_DIR" )
+  cmd+=(-var-file="$COMMON_VAR_FILE" -var-file="$vm_file" "$PACKER_DIR")
 
   echo "Building $vm_file"
   "${cmd[@]}"
