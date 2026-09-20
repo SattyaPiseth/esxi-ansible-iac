@@ -28,12 +28,12 @@ guest_base_operator_repositories:
     uris:
       - https://ppa.launchpadcontent.net/zhangsongcui3371/fastfetch/ubuntu
     suites:
-      - "{{ ansible_distribution_release }}"
+      - "{{ ansible_facts['distribution_release'] }}"
     components:
       - main
     signed_by: EB65EE19D802F3EB1A13CFE47E2E5CB4D4865F21
     legacy_source_files:
-      - "/etc/apt/sources.list.d/ppa_zhangsongcui3371_fastfetch_{{ ansible_distribution_release }}.list"
+      - "/etc/apt/sources.list.d/ppa_zhangsongcui3371_fastfetch_{{ ansible_facts['distribution_release'] }}.list"
     packages:
       - fastfetch
 
