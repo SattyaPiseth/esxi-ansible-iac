@@ -109,6 +109,11 @@ ansible-playbook playbooks/00-control-node.yml
 ansible-inventory --graph
 ```
 
+Run these commands as the regular operator account without `sudo`. The project
+expects user-scoped Ansible collections under `~/.ansible/collections`; using
+`sudo ansible-playbook` switches to root's independent collection tree. Managed
+host privilege escalation belongs in playbook `become` settings.
+
 Pin validation tools in `requirements-dev.txt` so local and GitHub Actions behavior remains reproducible.
 
 ## 3. Ubuntu VM creation with Packer
@@ -132,7 +137,8 @@ Creates Ubuntu 24.04 VMs and performs the initial unattended installation. Ansib
 - Put VM-specific CPU, memory, disk, datastore, and name settings in per-VM files.
 - Keep real `*.pkrvars.hcl` files untracked.
 - Update sanitized examples whenever required variables change.
-- Keep the script's default VM directory aligned with the supported ESXi target.
+- Always pass the matching common variable file and VM directory together:
+  `esxi-6.7` for management VMs and `esxi-8` for worker VMs.
 
 ### Validate
 
@@ -220,6 +226,10 @@ Validates the managed SSH key pair, enrolls host keys, waits for SSH, bootstraps
 ansible-playbook playbooks/99-guest-site.yml --check --limit <inventory-host>
 ansible <inventory-host> -m ansible.builtin.ping
 ```
+
+Check mode previews timezone and NTP changes but skips the clock-synchronization
+wait because it cannot enable NTP. A normal reconciliation still waits for and
+requires `NTPSynchronized=yes`.
 
 Recovery is disabled by default and must name explicit VMs. Key rotation has deploy and revoke phases; verify access with the new key before revoking the old one.
 
@@ -311,6 +321,11 @@ Deploy only with the explicit guard:
 ansible-playbook playbooks/09-kubespray-deploy.yml \
   -e kubespray_control_enable_cluster_deploy=true
 ```
+
+`99-kubernetes-site.yml` prepares the controller and nodes and invokes this
+guarded base-cluster deployment. It does not run `13-kubespray-metallb.yml` or
+`14-kubernetes-health.yml`; apply MetalLB address pools and perform the final
+health validation as explicit post-deployment steps.
 
 Kubernetes or Kubespray version upgrades require release-note review, backup validation, supported upgrade-path confirmation, and a separate change window. Reset is destructive and must never be part of normal reconciliation.
 

@@ -67,6 +67,12 @@ Run commands from the repository root. The control machine needs Python 3 with `
 
 Examples assume the operator uses `~/.ssh/esxi_ansible_ed25519` and its matching `.pub` file.
 
+Run Ansible as the regular operator account, not through `sudo`. Ansible Galaxy
+collections are installed per user; running `sudo ansible-playbook` selects a
+separate collection tree under `/root/.ansible` and can load stale dependencies.
+Use Ansible `become` support, which the playbooks configure where privilege is
+required on managed hosts.
+
 ## First-time setup
 
 Supporting guides: [inventory and secrets](docs/feature-maintenance.md#1-inventory-and-secrets) and [control-node dependencies](docs/feature-maintenance.md#2-control-node-dependencies).
@@ -234,10 +240,15 @@ Longhorn workloads and application volumes should normally be reconciled by the 
 | `99-esxi-site.yml` | Validate ESXi, gather facts, and power on all managed VMs |
 | `99-guest-discover.yml` | Discover and verify guests |
 | `99-guest-site.yml` | Reconcile managed guests |
-| `99-kubernetes-site.yml` | Run the Kubernetes workflow |
+| `99-kubernetes-site.yml` | Prepare the controller and nodes, then run the guarded base-cluster deployment |
 | `99-site-run.yml` | Run the normal ESXi/guest workflow |
 
 `99-site-run.yml` composes `99-esxi-site.yml` and `99-guest-site.yml`, powering on every managed VM before guest reconciliation. Use `04-vm-power.yml -e vm_power_name=<name>` for a single-VM power operation.
+
+`99-kubernetes-site.yml` renders the Kubespray inventory through
+`09-kubespray-deploy.yml`, but it does not apply the post-deployment MetalLB
+address pools or run the final health playbook. Run `13-kubespray-metallb.yml`
+and `14-kubernetes-health.yml` afterward when those checks are required.
 
 Unnumbered playbooks such as `site-esxi.yml`, `site-guest.yml`, `rotate-ssh-key.yml`, and `sync-project.yml` are compatibility wrappers. Prefer numbered entry points for new automation.
 

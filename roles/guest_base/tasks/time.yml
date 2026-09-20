@@ -51,3 +51,6 @@
   retries: "{{ guest_base_ntp_sync_retries }}"
   delay: "{{ guest_base_ntp_sync_delay }}"
   until: guest_base_ntp_synchronized.stdout == "yes"
+  # Check mode cannot enable NTP, so waiting for the unapplied target state
+  # would always exhaust the retries when synchronization is currently off.
+  when: not ansible_check_mode
