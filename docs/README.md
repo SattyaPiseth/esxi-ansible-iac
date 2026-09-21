@@ -20,8 +20,9 @@ Start with the [project README](../README.md) for installation and normal operat
 | MetalLB/add-ons | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [MetalLB and add-ons](feature-maintenance.md#9-metallb-and-cluster-add-ons) |
 | Cluster health | [Troubleshooting](../README.md#troubleshooting) | [Health and kubeconfig](feature-maintenance.md#10-kubernetes-health-and-operator-kubeconfig) |
 | Longhorn hosts | [Prepare Longhorn nodes](../README.md#prepare-longhorn-nodes) | [Longhorn preparation](feature-maintenance.md#11-longhorn-node-preparation) |
-| Project synchronization | [Canonical playbooks](../README.md#canonical-playbooks) | [Project synchronization](feature-maintenance.md#12-project-synchronization) |
-| CI and validation | [Development and CI](../README.md#development-and-ci) | [CI and quality](feature-maintenance.md#13-ci-and-repository-quality) |
+| Argo CD v3 bootstrap | [Bootstrap Argo CD v3](../README.md#bootstrap-argo-cd-v3) | [Automated bootstrap](feature-maintenance.md#12-automated-argo-cd-v3-bootstrap) |
+| Project synchronization | [Canonical playbooks](../README.md#canonical-playbooks) | [Project synchronization](feature-maintenance.md#13-project-synchronization) |
+| CI and validation | [Development and CI](../README.md#development-and-ci) | [CI and quality](feature-maintenance.md#14-ci-and-repository-quality) |
 | Change review | [Safety](../README.md#safety) | [Change checklist](feature-maintenance.md#change-checklist) |
 
 ## Document responsibilities

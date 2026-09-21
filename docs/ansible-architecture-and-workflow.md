@@ -204,6 +204,20 @@ The Kubernetes workflow is:
        -> run deployment only with its enable flag
 ```
 
+The complete platform workflow extends that base-cluster workflow:
+
+```text
+99-platform-site.yml
+  -> 99-kubernetes-site.yml
+  -> install MetalLB and its address pools
+  -> prepare Longhorn nodes
+  -> validate Kubernetes health
+  -> 19-argocd-bootstrap.yml
+       -> install pinned Argo CD v3 only when absent
+       -> create AppProjects and root-applications only when absent
+       -> hand continuous reconciliation to GitOps
+```
+
 MetalLB address pools and final health validation remain explicit follow-up
 steps (`13-kubespray-metallb.yml` and `14-kubernetes-health.yml`). Kubernetes
 reset, VM deletion, SSH recovery, and disk formatting are never part of normal

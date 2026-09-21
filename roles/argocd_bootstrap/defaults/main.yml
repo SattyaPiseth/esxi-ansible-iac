@@ -1,0 +1,18 @@
+---
+argocd_bootstrap_enable: false
+argocd_bootstrap_gitops_dir: /opt/gitops-platform
+argocd_bootstrap_namespace: argocd
+argocd_bootstrap_expected_version: v3.3.14
+argocd_bootstrap_timeout: 10m
+argocd_bootstrap_artifacts_dir: >-
+  {{ playbook_dir }}/../.generated/kubespray/{{ kubespray_cluster_name | default('production') }}/artifacts
+argocd_bootstrap_kubectl: "{{ argocd_bootstrap_artifacts_dir }}/kubectl"
+argocd_bootstrap_kubeconfig: "{{ argocd_bootstrap_artifacts_dir }}/admin.conf"
+argocd_bootstrap_resources_dir: "{{ argocd_bootstrap_gitops_dir }}/clusters/production/argocd/resources"
+argocd_bootstrap_projects_dir: "{{ argocd_bootstrap_gitops_dir }}/clusters/production/argocd/projects"
+argocd_bootstrap_root_application: >-
+  {{ argocd_bootstrap_gitops_dir }}/clusters/production/argocd/applications/root-applications.yaml
+argocd_bootstrap_kubectl_argv:
+  - "{{ argocd_bootstrap_kubectl }}"
+  - --kubeconfig
+  - "{{ argocd_bootstrap_kubeconfig }}"

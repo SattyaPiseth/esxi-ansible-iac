@@ -1,0 +1,15 @@
+---
+- name: Deploy the Kubernetes base platform
+  ansible.builtin.import_playbook: 99-kubernetes-site.yml
+
+- name: Install MetalLB and address pools
+  ansible.builtin.import_playbook: 13-kubespray-metallb.yml
+
+- name: Prepare Longhorn nodes
+  ansible.builtin.import_playbook: 16-longhorn-node-prepare.yml
+
+- name: Validate Kubernetes before GitOps bootstrap
+  ansible.builtin.import_playbook: 14-kubernetes-health.yml
+
+- name: Bootstrap GitOps-managed Argo CD
+  ansible.builtin.import_playbook: 19-argocd-bootstrap.yml

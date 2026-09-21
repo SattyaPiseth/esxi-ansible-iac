@@ -36,6 +36,7 @@ Apply these rules to every change:
 | MetalLB | `13-kubespray-metallb.yml` | Kubespray and MetalLB role variables |
 | Cluster health and kubeconfig | `14-kubernetes-health.yml` | Health and kubeconfig roles |
 | Longhorn node preparation | `16-longhorn-node-prepare.yml` | Longhorn inventory and role |
+| Argo CD v3 bootstrap | `19-argocd-bootstrap.yml`, `99-platform-site.yml` | `gitops-platform` manifests and `roles/argocd_bootstrap/` |
 | Project synchronization | `18-project-sync.yml` | Synchronization playbook |
 | CI and quality controls | GitHub Actions / pre-commit | `.github/workflows/validate.yml` and `.pre-commit-config.yaml` |
 
@@ -457,7 +458,9 @@ Enables Kubespray add-ons and applies MetalLB address pools after its webhook is
 
 - `kubespray_inventory_enable_metallb`
 - `kubespray_inventory_metallb_ip_range`
-- Metrics Server, cert-manager, Argo CD, registry, and Helm enable flags
+- Metrics Server, cert-manager, registry, and Helm enable flags
+- `kubespray_inventory_enable_argocd` must remain `false`; Argo CD v3 is
+  bootstrapped by `19-argocd-bootstrap.yml` from the GitOps source of truth
 - `kubespray_metallb_controller_timeout`
 - `kubespray_metallb_apply_retries`
 
@@ -540,7 +543,65 @@ ansible-playbook playbooks/16-longhorn-node-prepare.yml \
 
 Disk formatting must remain disabled unless a verified, empty target device is intentionally being initialized. Before node maintenance, confirm Longhorn replica health, free capacity, and data locality. In-cluster Longhorn deployment and volumes remain owned by GitOps.
 
-## 12. Project synchronization
+## 12. Automated Argo CD v3 bootstrap
+
+### Purpose
+
+Completes an unattended platform deployment after Kubespray by installing the
+Argo CD version pinned in `/opt/gitops-platform`, applying AppProjects and the
+root Application, and handing continuous reconciliation to Argo CD.
+
+### Ownership
+
+- Kubespray owns the Kubernetes cluster and keeps `argocd_enabled` disabled.
+- `roles/argocd_bootstrap/` is an idempotent bootstrap and recovery mechanism.
+- `/opt/gitops-platform/clusters/production/argocd/resources` owns the Argo CD
+  installation manifest and version.
+- `argocd-runtime` owns continuous Argo CD reconciliation after bootstrap.
+
+Do not copy the upstream Argo CD install manifest into this repository. The
+bootstrap consumes the GitOps source directly so the version and patches have
+one source of truth.
+
+### Important controls
+
+- `argocd_bootstrap_enable` defaults to `false` and must be explicitly enabled.
+- `kubespray_inventory_enable_argocd` must remain `false`.
+- `argocd_bootstrap_gitops_dir` defaults to `/opt/gitops-platform`.
+- `argocd_bootstrap_expected_version` verifies the deployed Argo CD images.
+- The generated Kubespray `kubectl` and `admin.conf` are used explicitly.
+
+### Use and validate
+
+Preview local prerequisites without modifying the cluster:
+
+```bash
+ansible-playbook playbooks/19-argocd-bootstrap.yml \
+  --check -e argocd_bootstrap_enable=true
+```
+
+Bootstrap a new installation or verify an existing handoff:
+
+```bash
+ansible-playbook playbooks/19-argocd-bootstrap.yml \
+  -e argocd_bootstrap_enable=true
+```
+
+Run the complete deployment workflow:
+
+```bash
+ansible-playbook playbooks/99-platform-site.yml \
+  -e kubespray_control_enable_cluster_deploy=true \
+  -e argocd_bootstrap_enable=true
+```
+
+The role stops before mutation unless the API is ready and every node is
+Ready. It performs a server-side dry-run, waits for all Argo CD workloads,
+applies the security projects before the root Application, and verifies the
+pinned Argo CD image version. Vault initialization and unsealing remain a
+separate security boundary unless a supported auto-unseal service is adopted.
+
+## 13. Project synchronization
 
 ### Purpose
 
@@ -560,7 +621,7 @@ ansible-playbook playbooks/18-project-sync.yml \
 
 The target must be a managed inventory host and use a protected private key. Synchronization excludes repository metadata, virtual environments, generated files, credentials, logs, and local Packer variables. Prefer Git for normal source distribution.
 
-## 13. CI and repository quality
+## 14. CI and repository quality
 
 ### Purpose
 

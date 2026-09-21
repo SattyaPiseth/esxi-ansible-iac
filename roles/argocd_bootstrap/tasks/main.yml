@@ -1,0 +1,252 @@
+---
+- name: Require explicit Argo CD bootstrap approval
+  ansible.builtin.assert:
+    that:
+      - argocd_bootstrap_enable | bool
+      - not (kubespray_inventory_enable_argocd | default(false) | bool)
+    fail_msg: >-
+      Pass -e argocd_bootstrap_enable=true and keep
+      kubespray_inventory_enable_argocd=false so only GitOps owns Argo CD.
+
+- name: Check Argo CD bootstrap inputs
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop:
+    - path: "{{ argocd_bootstrap_kubectl }}"
+      kind: file
+    - path: "{{ argocd_bootstrap_kubeconfig }}"
+      kind: file
+    - path: "{{ argocd_bootstrap_resources_dir }}/kustomization.yaml"
+      kind: file
+    - path: "{{ argocd_bootstrap_projects_dir }}"
+      kind: directory
+    - path: "{{ argocd_bootstrap_root_application }}"
+      kind: file
+  loop_control:
+    label: "{{ item.path }}"
+  register: argocd_bootstrap_inputs
+
+- name: Validate Argo CD bootstrap inputs
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - >-
+        (item.item.kind == 'file' and item.stat.isreg)
+        or (item.item.kind == 'directory' and item.stat.isdir)
+    fail_msg: "Required Argo CD bootstrap input is unavailable: {{ item.item.path }}"
+  loop: "{{ argocd_bootstrap_inputs.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+
+- name: Read the GitOps Argo CD kustomization
+  ansible.builtin.slurp:
+    src: "{{ argocd_bootstrap_resources_dir }}/kustomization.yaml"
+  register: argocd_bootstrap_kustomization
+
+- name: Validate the GitOps Argo CD version pin
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('ref=' + argocd_bootstrap_expected_version)
+        in (argocd_bootstrap_kustomization.content | b64decode)
+    fail_msg: >-
+      The GitOps Argo CD kustomization is not pinned to
+      {{ argocd_bootstrap_expected_version }}.
+
+- name: Explain check-mode bootstrap behavior
+  ansible.builtin.debug:
+    msg: >-
+      Argo CD bootstrap inputs are valid. Live API validation, apply, and
+      rollout checks are skipped in Ansible check mode.
+  when: ansible_check_mode
+
+- name: Bootstrap Argo CD from the GitOps source of truth
+  when: not ansible_check_mode
+  block:
+    - name: Verify Kubernetes API readiness
+      ansible.builtin.command:
+        argv: "{{ argocd_bootstrap_kubectl_argv + ['get', '--raw=/readyz'] }}"
+      changed_when: false
+      register: argocd_bootstrap_api_readiness
+      retries: 12
+      delay: 10
+      until:
+        - argocd_bootstrap_api_readiness.rc == 0
+        - argocd_bootstrap_api_readiness.stdout | trim == 'ok'
+
+    - name: Read Kubernetes nodes
+      ansible.builtin.command:
+        argv: "{{ argocd_bootstrap_kubectl_argv + ['get', 'nodes', '-o', 'json'] }}"
+      changed_when: false
+      register: argocd_bootstrap_nodes_raw
+
+    - name: Validate every Kubernetes node is Ready
+      ansible.builtin.assert:
+        that:
+          - argocd_bootstrap_not_ready_nodes | length == 0
+        fail_msg: >-
+          Refusing Argo CD bootstrap because these nodes are not Ready:
+          {{ argocd_bootstrap_not_ready_nodes | join(', ') }}
+      vars:
+        argocd_bootstrap_not_ready_nodes: >-
+          {%- set result = [] -%}
+          {%- for node in (argocd_bootstrap_nodes_raw.stdout | from_json)['items'] -%}
+          {%- set ready = node.status.conditions
+             | selectattr('type', 'equalto', 'Ready')
+             | map(attribute='status') | first | default('False') -%}
+          {%- if ready != 'True' -%}
+          {%- set _ = result.append(node.metadata.name) -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ result }}
+
+    - name: Check Argo CD namespace
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['get', 'namespace', argocd_bootstrap_namespace] }}
+      changed_when: false
+      failed_when: false
+      register: argocd_bootstrap_namespace_check
+
+    - name: Create Argo CD namespace
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['create', 'namespace', argocd_bootstrap_namespace] }}
+      changed_when: true
+      when: argocd_bootstrap_namespace_check.rc != 0
+
+    - name: Check for an existing Argo CD installation
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['get', 'statefulset', 'argocd-application-controller',
+                '--namespace=' + argocd_bootstrap_namespace] }}
+      changed_when: false
+      failed_when: false
+      register: argocd_bootstrap_installation_check
+
+    - name: Validate Argo CD resources against the Kubernetes API
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['apply', '--server-side', '--dry-run=server', '--force-conflicts',
+                '-k', argocd_bootstrap_resources_dir] }}
+      changed_when: false
+
+    - name: Apply Argo CD resources
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['apply', '--server-side', '--force-conflicts',
+                '-k', argocd_bootstrap_resources_dir] }}
+      register: argocd_bootstrap_resources_apply
+      changed_when: false
+      when: argocd_bootstrap_installation_check.rc != 0
+
+    - name: Wait for Argo CD deployments
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['rollout', 'status', 'deployment/' + item,
+                '--namespace=' + argocd_bootstrap_namespace,
+                '--timeout=' + argocd_bootstrap_timeout] }}
+      changed_when: false
+      loop:
+        - argocd-applicationset-controller
+        - argocd-dex-server
+        - argocd-notifications-controller
+        - argocd-redis
+        - argocd-repo-server
+        - argocd-server
+
+    - name: Wait for Argo CD application controller
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['rollout', 'status', 'statefulset/argocd-application-controller',
+                '--namespace=' + argocd_bootstrap_namespace,
+                '--timeout=' + argocd_bootstrap_timeout] }}
+      changed_when: false
+
+    - name: Check for an existing root Argo CD Application
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['get', 'application', 'root-applications',
+                '--namespace=' + argocd_bootstrap_namespace] }}
+      changed_when: false
+      failed_when: false
+      register: argocd_bootstrap_root_check
+
+    - name: Apply Argo CD AppProjects
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['apply', '--filename', argocd_bootstrap_projects_dir] }}
+      register: argocd_bootstrap_projects_apply
+      changed_when: >-
+        ' created' in argocd_bootstrap_projects_apply.stdout
+        or ' configured' in argocd_bootstrap_projects_apply.stdout
+      when: argocd_bootstrap_root_check.rc != 0
+
+    - name: Apply root Argo CD Application
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['apply', '--filename', argocd_bootstrap_root_application] }}
+      register: argocd_bootstrap_root_apply
+      changed_when: >-
+        ' created' in argocd_bootstrap_root_apply.stdout
+        or ' configured' in argocd_bootstrap_root_apply.stdout
+      when: argocd_bootstrap_root_check.rc != 0
+
+    - name: Wait for the root Argo CD Application to be observed
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['get', 'application', 'root-applications',
+                '--namespace=' + argocd_bootstrap_namespace, '-o', 'json'] }}
+      changed_when: false
+      register: argocd_bootstrap_root_status
+      retries: 30
+      delay: 10
+      until:
+        - argocd_bootstrap_root_status.rc == 0
+        - (argocd_bootstrap_root_status.stdout | from_json).status is defined
+        - (argocd_bootstrap_root_status.stdout | from_json).status.sync is defined
+
+    - name: Read Argo CD workload images
+      ansible.builtin.command:
+        argv: >-
+          {{ argocd_bootstrap_kubectl_argv
+             + ['get', 'deployment,statefulset',
+                '--namespace=' + argocd_bootstrap_namespace, '-o', 'json'] }}
+      changed_when: false
+      register: argocd_bootstrap_workloads_raw
+
+    - name: Verify the expected Argo CD version is running
+      ansible.builtin.assert:
+        that:
+          - argocd_bootstrap_argocd_images | length > 0
+          - argocd_bootstrap_unexpected_images | length == 0
+        fail_msg: >-
+          Argo CD workloads do not consistently use
+          {{ argocd_bootstrap_expected_version }}: {{ argocd_bootstrap_unexpected_images }}
+      vars:
+        argocd_bootstrap_argocd_images: >-
+          {{
+            (argocd_bootstrap_workloads_raw.stdout | from_json)['items']
+            | map(attribute='spec.template.spec.containers')
+            | flatten
+            | map(attribute='image')
+            | select('search', 'argoproj/argocd')
+            | list
+          }}
+        argocd_bootstrap_unexpected_images: >-
+          {{
+            argocd_bootstrap_argocd_images
+            | reject('search', ':' + argocd_bootstrap_expected_version + '$')
+            | list
+          }}

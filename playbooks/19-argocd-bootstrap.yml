@@ -1,0 +1,7 @@
+---
+- name: Bootstrap GitOps-managed Argo CD
+  hosts: control_node
+  gather_facts: false
+
+  roles:
+    - argocd_bootstrap

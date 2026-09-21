@@ -15,7 +15,8 @@ Maintenance reference: [feature ownership matrix](docs/feature-maintenance.md#fe
 | Kubernetes | Kubespray through Ansible | Generate inventory, install dependencies, deploy/reset the cluster, and configure MetalLB |
 | Node preparation | Ansible | Apply Kubernetes prerequisites, NIC-offload policy, and Longhorn dependencies |
 | Storage reference | Helm manifests | Supply reviewed Longhorn values and a smoke test |
-| Applications | External GitOps repository | Reconcile Argo CD applications and workloads |
+| GitOps bootstrap | Ansible using the external GitOps repository | Install the pinned Argo CD v3 release and create the root Application |
+| Applications | External GitOps repository | Reconcile Argo CD runtime configuration and workloads |
 
 ## Features
 
@@ -232,6 +233,35 @@ ansible-playbook playbooks/16-longhorn-node-prepare.yml
 
 Longhorn workloads and application volumes should normally be reconciled by the GitOps repository. Avoid creating a second source of truth here.
 
+## Bootstrap Argo CD v3
+
+Maintenance reference: [automated Argo CD v3 bootstrap](docs/feature-maintenance.md#12-automated-argo-cd-v3-bootstrap).
+
+Kubespray's bundled Argo CD add-on remains disabled because Kubespray v2.31.0
+pins Argo CD v2.14.5. This project instead performs an idempotent post-cluster
+bootstrap from the manifests owned by `/opt/gitops-platform`, then hands
+continuous ownership to the `argocd-runtime` Application.
+
+After the base cluster is healthy and `/opt/gitops-platform` is present:
+
+```bash
+ansible-playbook playbooks/19-argocd-bootstrap.yml \
+  -e argocd_bootstrap_enable=true
+```
+
+For a complete VM, Kubernetes, add-on, health, and GitOps bootstrap workflow:
+
+```bash
+ansible-playbook playbooks/99-platform-site.yml \
+  -e kubespray_control_enable_cluster_deploy=true \
+  -e argocd_bootstrap_enable=true
+```
+
+Both flags are deliberate safety gates. The bootstrap validates API and node
+health, server-side validates the pinned manifests, applies Argo CD, waits for
+its workloads, applies AppProjects and `root-applications`, and verifies the
+expected Argo CD version. It does not initialize Vault or expose secret values.
+
 ## Canonical playbooks
 
 | Range | Purpose |
@@ -241,10 +271,12 @@ Longhorn workloads and application volumes should normally be reconciled by the 
 | `07`–`10`, `13`–`15` | Generate, deploy, validate, and reset Kubernetes |
 | `16-longhorn-node-prepare.yml` | Install Longhorn node prerequisites |
 | `18-project-sync.yml` | Synchronize project content |
+| `19-argocd-bootstrap.yml` | Guarded Argo CD v3 bootstrap from `gitops-platform` |
 | `99-esxi-site.yml` | Validate ESXi, gather facts, and power on all managed VMs |
 | `99-guest-discover.yml` | Discover and verify guests |
 | `99-guest-site.yml` | Reconcile managed guests |
 | `99-kubernetes-site.yml` | Prepare the controller and nodes, then run the guarded base-cluster deployment |
+| `99-platform-site.yml` | Deploy the cluster, add-ons, health gates, and Argo CD v3 |
 | `99-site-run.yml` | Run the normal ESXi/guest workflow |
 
 `99-site-run.yml` composes `99-esxi-site.yml` and `99-guest-site.yml`, powering on every managed VM before guest reconciliation. Use `04-vm-power.yml -e vm_power_name=<name>` for a single-VM power operation.
@@ -253,6 +285,10 @@ Longhorn workloads and application volumes should normally be reconciled by the 
 `09-kubespray-deploy.yml`, but it does not apply the post-deployment MetalLB
 address pools or run the final health playbook. Run `13-kubespray-metallb.yml`
 and `14-kubernetes-health.yml` afterward when those checks are required.
+
+`99-platform-site.yml` composes those post-deployment steps and the guarded
+GitOps bootstrap. It requires both deployment enable flags and keeps the
+Kubespray Argo CD add-on disabled to prevent competing field ownership.
 
 Unnumbered playbooks such as `site-esxi.yml`, `site-guest.yml`, `rotate-ssh-key.yml`, and `sync-project.yml` are compatibility wrappers. Prefer numbered entry points for new automation.
 
@@ -307,7 +343,7 @@ Treat failed probes as symptoms: inspect pod events, logs, resources, and depend
 
 ## Development and CI
 
-Maintenance reference: [CI and repository quality](docs/feature-maintenance.md#13-ci-and-repository-quality).
+Maintenance reference: [CI and repository quality](docs/feature-maintenance.md#14-ci-and-repository-quality).
 
 ```bash
 scripts/validate-packer.sh
@@ -330,5 +366,6 @@ When extending the project:
 - This repository supports the committed topology; it is not a generic ESXi framework.
 - Packer creates VMs; Ansible manages them after creation.
 - Kubespray owns Kubernetes installation; this project supplies inputs and orchestration.
-- The GitOps platform owns in-cluster applications after bootstrap.
+- Ansible performs the repeatable Argo CD bootstrap from the GitOps source;
+  the GitOps platform owns Argo CD and in-cluster applications afterward.
 - Longhorn capacity, placement, and data protection require ongoing monitoring.
