@@ -379,11 +379,32 @@ git diff --check
 
 Generated inventory, logs, fact cache, binaries, and kubeconfig under `.generated/` are runtime artifacts and must not be committed.
 
+Keep Kubespray runtime logs with the generated cluster state:
+
+- deployment: `.generated/kubespray/production/kubespray-deploy.log`
+- reset: `.generated/kubespray/production/kubespray-reset.log`
+- optional `nohup` wrapper: `.generated/kubespray/production/kubespray-deploy-nohup.log`
+
+The role initializes the deployment or reset log at the start of the matching
+operation. Do not create duplicate Kubespray logs in the repository root or a
+second `logs/` tree.
+
 Deploy only with the explicit guard:
 
 ```bash
 ansible-playbook playbooks/09-kubespray-deploy.yml \
   -e kubespray_control_enable_cluster_deploy=true
+```
+
+For a background run, keep only the outer wrapper output separate; the nested
+Kubespray process continues to use the deployment log above:
+
+```bash
+nohup .venv/vmware/bin/ansible-playbook \
+  playbooks/09-kubespray-deploy.yml \
+  -e kubespray_control_enable_cluster_deploy=true \
+  > .generated/kubespray/production/kubespray-deploy-nohup.log 2>&1 \
+  < /dev/null &
 ```
 
 `99-kubernetes-site.yml` prepares the controller and nodes and invokes this
@@ -408,7 +429,16 @@ Provides the highly available Kubernetes API endpoint at `172.16.6.150`.
 
 The current control planes use `ens192`; workers use `ens33`. There is no global interface variable.
 
+The shared settings include kube-vip leader-election timings. Production uses
+the upstream kube-vip defaults `15/10/2` rather than Kubespray v2.31.0's
+shorter `5/3/1` defaults. This is a tolerance measure for brief API stalls; it
+does not repair slow ESXi storage, etcd request latency, or API HTTP 500
+responses. Treat recurring etcd or API failures as a separate control-plane
+storage incident.
+
 Use the dedicated [kube-vip per-node interface guide](kube-vip-per-node-interface.md) for change, verification, failover, troubleshooting, and rollback procedures.
+That guide also contains the authoritative scope, acceptance criteria, and
+official upstream references for the timing configuration.
 
 ## 9. MetalLB and cluster add-ons
 

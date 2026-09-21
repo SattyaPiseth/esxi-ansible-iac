@@ -141,6 +141,15 @@
       - not (kubespray_inventory_enable_kube_vip | bool) or kubespray_inventory_kube_vip_address | length > 0
       - not (kubespray_inventory_enable_kube_vip | bool) or kubespray_inventory_enable_kube_vip_controlplane | bool
       - not (kubespray_inventory_enable_kube_vip | bool) or not (kubespray_inventory_enable_kube_vip_services | bool)
+      - not (kubespray_inventory_enable_kube_vip | bool) or kubespray_inventory_kube_vip_retry_period | int > 0
+      - >-
+        not (kubespray_inventory_enable_kube_vip | bool)
+        or kubespray_inventory_kube_vip_renew_deadline | int
+           > kubespray_inventory_kube_vip_retry_period | int
+      - >-
+        not (kubespray_inventory_enable_kube_vip | bool)
+        or kubespray_inventory_kube_vip_lease_duration | int
+           > kubespray_inventory_kube_vip_renew_deadline | int
       - >-
         not (kubespray_inventory_enable_kube_vip | bool)
         or kubespray_inventory_kube_vip_address not in
@@ -154,5 +163,6 @@
         or kubespray_inventory_enable_kube_vip_arp | bool
     fail_msg: >-
       kube-vip requires a reserved VIP, control-plane mode, ARP with IPVS,
-      and an address that is not assigned to a cluster node. Service mode must
-      remain disabled because MetalLB owns LoadBalancer IPs.
+      retry_period < renew_deadline < lease_duration, and an address that is
+      not assigned to a cluster node. Service mode must remain disabled because
+      MetalLB owns LoadBalancer IPs.

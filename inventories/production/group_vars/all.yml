@@ -35,6 +35,11 @@ kubespray_inventory_kube_proxy_metrics_bind_address: "0.0.0.0:10249"
 kubespray_inventory_enable_kube_vip: true
 kubespray_inventory_kube_vip_version: "1.0.4"
 kubespray_inventory_kube_vip_address: 172.16.6.150
+# Use kube-vip's documented leader-election defaults. Kubespray's shorter
+# 5/3/1 defaults are too sensitive to brief API or datastore latency here.
+kubespray_inventory_kube_vip_lease_duration: 15
+kubespray_inventory_kube_vip_renew_deadline: 10
+kubespray_inventory_kube_vip_retry_period: 2
 kubespray_inventory_dns_mode: coredns
 kubespray_inventory_enable_nodelocaldns: true
 kubespray_inventory_nodelocaldns_ip: 169.254.25.10

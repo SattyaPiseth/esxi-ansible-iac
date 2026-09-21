@@ -12,6 +12,9 @@ kube_vip_services_enabled: {{ kubespray_inventory_enable_kube_vip_services | boo
 kube_vip_arp_enabled: {{ kubespray_inventory_enable_kube_vip_arp | bool | lower }}
 kube_vip_lb_enable: {{ kubespray_inventory_enable_kube_vip_lb | bool | lower }}
 kube_vip_address: "{{ kubespray_inventory_kube_vip_address }}"
+kube_vip_leaseduration: {{ kubespray_inventory_kube_vip_lease_duration }}
+kube_vip_renewdeadline: {{ kubespray_inventory_kube_vip_renew_deadline }}
+kube_vip_retryperiod: {{ kubespray_inventory_kube_vip_retry_period }}
 loadbalancer_apiserver:
   address: "{{ kubespray_inventory_kube_vip_address }}"
   port: 6443

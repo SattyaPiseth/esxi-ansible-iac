@@ -75,11 +75,47 @@ The production variables currently include:
 kubespray_inventory_enable_kube_vip: true
 kubespray_inventory_kube_vip_version: "1.0.4"
 kubespray_inventory_kube_vip_address: 172.16.6.150
+kubespray_inventory_kube_vip_lease_duration: 15
+kubespray_inventory_kube_vip_renew_deadline: 10
+kubespray_inventory_kube_vip_retry_period: 2
 ```
 
 The rendered cluster configuration enables kube-vip for the control-plane endpoint, enables ARP mode, and leaves kube-vip service mode disabled because MetalLB owns `LoadBalancer` addresses.
 
 The generated group variables must contain the VIP and shared mode settings, but must not contain a global `kube_vip_interface`.
+
+The `15/10/2` leader-election timings are kube-vip's documented defaults:
+the lease remains valid for 15 seconds, the leader has 10 seconds to renew it,
+and renewal/acquisition attempts use a 2-second retry period. These settings
+tolerate short API or datastore pauses better than Kubespray's `5/3/1`
+defaults. They do not repair a slow etcd datastore; investigate recurring API
+HTTP 500 responses, etcd timeouts, or sustained disk latency separately.
+
+### Scope and limitations of the timing change
+
+This configuration is a resilience mitigation, not a datastore repair:
+
+- It gives the current kube-vip leader up to 10 seconds to renew a 15-second
+  lease instead of abandoning leadership after 3 seconds.
+- It reduces avoidable VIP movement and clean kube-vip restarts during short
+  API stalls.
+- It does not reduce ESXi datastore latency, speed up etcd writes, eliminate
+  API HTTP 500 responses, or guarantee that a stall longer than the renewal
+  deadline will preserve leadership.
+
+The source variables render to Kubespray's supported
+`kube_vip_leaseduration`, `kube_vip_renewdeadline`, and
+`kube_vip_retryperiod` variables. The repository validates the required
+ordering `retry period < renew deadline < lease duration` before rendering.
+
+Consider the mitigation effective only when, after reconciliation and during a
+representative observation period:
+
+1. the live kube-vip Pods show `15/10/2`;
+2. kube-vip restart counters stop increasing during brief API pauses;
+3. the API VIP remains reachable during those pauses; and
+4. etcd timeout and API HTTP 500 events are tracked independently until the
+   storage bottleneck is corrected.
 
 ## When to change an interface
 
@@ -282,6 +318,24 @@ kubectl -n kube-system logs \
 ip neigh show 172.16.6.150
 ```
 
+### kube-vip repeatedly restarts
+
+First determine whether kube-vip is the cause or is reacting to an unhealthy
+API. A lost leader lease followed by a clean container exit is normally a
+symptom of API or etcd latency.
+
+```bash
+kubectl get --raw='/readyz?verbose'
+kubectl -n kube-system logs --selector=k8s-app=kube-vip --previous --tail=100
+kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp
+ansible kube_control_plane -b -m ansible.builtin.shell \
+  -a 'iostat -xz 1 3'
+```
+
+High disk `await`, sustained utilization, `etcdserver: request timed out`, or
+API readiness HTTP 500 responses identify a control-plane storage/API problem.
+Do not keep increasing leader-election timings to conceal that condition.
+
 ### NIC-offload validation fails
 
 Confirm the inventory-selected interface and inspect its active features:
@@ -325,6 +379,13 @@ PATH="$PWD/.venv/vmware/bin:$PATH" \
 ```
 
 Review the diff and confirm that no generated files, credentials, or unrelated runtime artifacts are staged.
+
+## Official references
+
+- [kube-vip flags and environment variables](https://kube-vip.io/docs/installation/flags/) documents the `15/10/2` leader-election defaults and corresponding environment variables.
+- [Kubespray v2.31.0 kube-vip defaults](https://github.com/kubernetes-sigs/kubespray/blob/v2.31.0/roles/kubernetes/node/defaults/main.yml) and its [static Pod template](https://github.com/kubernetes-sigs/kubespray/blob/v2.31.0/roles/kubernetes/node/templates/manifests/kube-vip.manifest.j2) document the supported variables consumed by this repository.
+- [Kubernetes: Operating etcd clusters](https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/) explains that etcd stability is sensitive to resource, network, and disk I/O starvation.
+- [etcd hardware recommendations](https://etcd.io/docs/v3.5/op-guide/hardware/) and [etcd tuning](https://etcd.io/docs/v3.6/tuning/) explain why slow disk writes can cause request timeouts and temporary leader loss.
 
 ---
 
