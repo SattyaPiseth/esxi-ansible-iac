@@ -74,7 +74,9 @@ kubespray_inventory_metrics_server_requests_cpu: "100m"
 kubespray_inventory_metrics_server_requests_memory: "200Mi"
 kubespray_metrics_server_probe_timeout_seconds: 5
 kubespray_inventory_enable_cert_manager: true
-kubespray_inventory_enable_argocd: true
+# Argo CD is installed and reconciled by /opt/gitops-platform. Keep the
+# Kubespray add-on disabled to avoid two declarative owners rewriting it.
+kubespray_inventory_enable_argocd: false
 kubespray_inventory_enable_registry: true
 kubespray_inventory_enable_local_path_provisioner: false
 
