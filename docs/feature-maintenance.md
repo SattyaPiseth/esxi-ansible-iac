@@ -167,6 +167,14 @@ Creates Ubuntu 24.04 VMs and performs the initial unattended installation. Ansib
 
 - Put shared ESXi/build settings in a local common variable file.
 - Put VM-specific CPU, memory, disk, datastore, and name settings in per-VM files.
+- `vm_disk_mb` and `vm_disk_thin_provisioned` configure the first (OS) disk.
+  `vm_data_disk_mb` enables a second disk when greater than zero (default zero);
+  `vm_data_disk_thin_provisioned` defaults to false for thick provisioning.
+  Worker examples use a 204800 MB thin OS disk and a 512000 MB thick data disk.
+  Autoinstall explicitly selects `/dev/sda`, the first disk on the PVSCSI
+  controller, leaving the data disk unformatted. Revisit that match if changing
+  controller types or disk ordering. Configure the new data disk's stable ID in
+  host variables before running the separate Longhorn disk preparation workflow.
 - Keep real `*.pkrvars.hcl` files untracked.
 - Update sanitized examples whenever required variables change.
 - Select exactly one build scope with `--target`: `esxi-6.7` for management VMs

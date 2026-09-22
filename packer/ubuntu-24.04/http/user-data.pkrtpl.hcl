@@ -20,6 +20,9 @@ autoinstall:
   storage:
     layout:
       name: lvm
+      # The first PVSCSI disk is the OS disk; leave the data disk untouched.
+      match:
+        path: /dev/sda
       sizing-policy: all
   identity:
     hostname: ${hostname}

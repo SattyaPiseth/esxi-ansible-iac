@@ -133,6 +133,26 @@ variable "vm_disk_mb" {
   }
 }
 
+variable "vm_disk_thin_provisioned" {
+  type    = bool
+  default = true
+}
+
+variable "vm_data_disk_mb" {
+  type    = number
+  default = 0
+
+  validation {
+    condition     = var.vm_data_disk_mb >= 0 && floor(var.vm_data_disk_mb) == var.vm_data_disk_mb
+    error_message = "The vm_data_disk_mb value must be a non-negative integer; zero disables the second disk."
+  }
+}
+
+variable "vm_data_disk_thin_provisioned" {
+  type    = bool
+  default = false
+}
+
 variable "ssh_username" {
   type    = string
   default = "sysadmin"
@@ -211,7 +231,15 @@ source "vsphere-iso" "ubuntu_24_04" {
   disk_controller_type = ["pvscsi"]
   storage {
     disk_size             = var.vm_disk_mb
-    disk_thin_provisioned = true
+    disk_thin_provisioned = var.vm_disk_thin_provisioned
+  }
+
+  dynamic "storage" {
+    for_each = var.vm_data_disk_mb > 0 ? [var.vm_data_disk_mb] : []
+    content {
+      disk_size             = storage.value
+      disk_thin_provisioned = var.vm_data_disk_thin_provisioned
+    }
   }
 
   network_adapters {

@@ -1,5 +1,12 @@
 vm_name        = "ubuntu_24.04-wrk-01"
 guest_hostname = "ubuntu-24-04-wrk-01"
-vm_cpu         = 6
-vm_memory_mb   = 8192
-vm_disk_mb     = 204800
+vm_cpu         = 8
+vm_memory_mb   = 12288
+
+# Hard disk 1: OS, 200 GiB, thin provisioned.
+vm_disk_mb               = 204800
+vm_disk_thin_provisioned = true
+
+# Hard disk 2: data, 500 GiB, thick provisioned.
+vm_data_disk_mb               = 512000
+vm_data_disk_thin_provisioned = false

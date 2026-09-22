@@ -42,6 +42,20 @@ Maintenance reference: [feature ownership matrix](docs/feature-maintenance.md#fe
 
 VM lifecycle ownership is host-scoped: ESXi 6.7 owns the three `mgmt` VMs, and ESXi 8 owns the three `wrk` VMs. The authoritative mapping is `managed_vm_esxi_ownership` in `inventories/production/group_vars/all.yml`; both hosts belong to `managed_vm_esxi`.
 
+The tracked Packer examples define these VM resources (existing VMs are not resized):
+
+| ESXi target | VM | vCPUs | RAM (MB) | OS disk (MB) | Data disk (MB) |
+|---|---|---:|---:|---|---|
+| esxi-6.7 | mgmt-01, mgmt-02, mgmt-03 | 6 each | 6144 each | 51200, thin | None |
+| esxi-8 | wrk-01 | 8 | 12288 | 204800, thin | 512000, thick |
+| esxi-8 | wrk-02, wrk-03 | 6 each | 12288 each | 204800, thin | 512000, thick |
+
+Worker data disks are created unformatted. Ubuntu installs on the first PVSCSI
+disk (`/dev/sda`); Longhorn disk preparation is a separate Ansible workflow.
+Copy the sizing and disk settings into existing local `.pkrvars.hcl` files before
+building: `just secrets-init` preserves existing files. See the
+[disk configuration reference](docs/feature-maintenance.md#3-ubuntu-vm-creation-with-packer).
+
 The cluster uses kube-vip for the API virtual IP, MetalLB for service addresses, Calico VXLAN, and IPVS. Authoritative values are under `inventories/production/`; review them before using this repository elsewhere.
 
 ## Repository layout
