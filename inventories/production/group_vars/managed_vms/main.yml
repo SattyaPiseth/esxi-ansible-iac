@@ -16,6 +16,7 @@ guest_base_authorized_keys: >-
      + guest_additional_authorized_keys }}
 guest_base_operator_packages:
   - fish
+  - just
   - tree
   - yq
 guest_base_operator_apt_packages_absent:
