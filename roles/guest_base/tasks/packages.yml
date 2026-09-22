@@ -12,6 +12,8 @@
     update_cache: true
     cache_valid_time: "{{ guest_base_apt_cache_valid_time }}"
   become: true
+  # Repair configured repositories before refreshing a potentially broken cache.
+  when: guest_base_operator_repositories | length == 0
 
 - name: Install APT repository management dependencies
   ansible.builtin.apt:
