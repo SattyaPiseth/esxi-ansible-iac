@@ -7,9 +7,16 @@ export PATH := justfile_directory() + "/.venv/vmware/bin:" + env_var("PATH")
 default:
     @just --list
 
+# Install system Python 3.12 using sudo; Ubuntu 22.04 adds the Deadsnakes PPA.
+bootstrap:
+    bash scripts/bootstrap-control-node.sh
+
 # Install Packer, pinned Python tools, and Ansible collections.
-deps: packer-install
-    python3 -m venv .venv/vmware
+deps $python="python3.12": packer-install
+    @command -v "$python" >/dev/null || { echo "Install $python and its venv support first, or run just deps /path/to/python3.12." >&2; exit 1; }
+    @"$python" -c 'import sys; sys.exit("Ansible dependencies require Python 3.12 or newer.") if sys.version_info < (3, 12) else None'
+    @if [ -x .venv/vmware/bin/python ]; then .venv/vmware/bin/python -c 'import sys; sys.exit("Existing .venv/vmware uses Python <3.12. Move it to a backup path, then rerun just deps.") if sys.version_info < (3, 12) else None'; fi
+    "$python" -m venv .venv/vmware
     .venv/vmware/bin/python -m pip install --upgrade pip
     .venv/vmware/bin/python -m pip install -r requirements-dev.txt
     .venv/vmware/bin/ansible-galaxy collection install -r requirements.yml

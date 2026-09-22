@@ -66,7 +66,7 @@ docs/                     Focused operational documentation
 ## Prerequisites
 
 Run commands from the repository root. The control machine needs Python 3 with
-`venv`, Ansible, Packer 1.16.1, Git, and access to ESXi and the guest subnet.
+`venv` (Python 3.12 or newer for Ansible), Ansible, Packer 1.16.1, Git, and access to ESXi and the guest subnet.
 The standalone ESXi workflow pins the vSphere plugin to 1.2.7. Post-deployment
 work also needs `kubectl` and Helm.
 
@@ -92,9 +92,29 @@ sudo apt install -y just git python3-venv
 git clone <repository-url> esxi-ansible-iac
 cd esxi-ansible-iac
 just                         # List commands; performs no setup or deployment
+just bootstrap               # Install system Python 3.12 and venv using sudo
 just deps                    # Create .venv/vmware, install Packer, Python tools and collections
 just secrets-init            # Copy inventory and Packer examples; preserve existing files
 just vaultpass               # Hidden password prompt with confirmation; creates mode 0600
+```
+
+`just deps` defaults to `python3.12`; select another compatible interpreter with
+`just deps /path/to/python3.12`. The pinned Ansible dependencies require Python
+3.12 or newer even though the standalone Packer installer supports Python 3.10.
+`just bootstrap` supports Ubuntu 22.04 and 24.04. On 22.04 it adds the
+third-party [Deadsnakes PPA](https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa);
+on 24.04 it uses Ubuntu packages. It installs Python alongside the system Python
+without changing `/usr/bin/python3`. Run this explicit system setup once before
+`just deps`; dependency installation does not automatically add APT repositories.
+If `just` is already available on a 22.04 control node, the same bootstrap applies.
+Alternatively, install your selected Python interpreter and its `venv` support
+through your organization's package-management process.
+If `.venv/vmware` was created with Python 3.10, preserve it before rerunning:
+
+```bash
+python3.12 --version
+mv .venv/vmware ".venv/vmware-backup-$(date +%Y%m%d-%H%M%S)"
+just deps
 ```
 
 Edit the copied inventory secrets and Packer variables before continuing.

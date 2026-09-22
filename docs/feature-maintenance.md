@@ -47,8 +47,14 @@ The root `justfile` wraps existing workflows and supports Ubuntu 24.04's `just`
 [setup shortcuts](../README.md#shortcuts-with-just-ubuntu-2404-control-node) for the
 ordered operator workflow.
 
+- `just bootstrap` runs `scripts/bootstrap-control-node.sh` using sudo for system
+  packages. Ubuntu 22.04 adds the Deadsnakes PPA; 24.04 uses Ubuntu packages.
+  Other distributions/releases are rejected before changes. System Python and
+  existing project environments are preserved.
 - `just deps` installs checksum-verified Packer 1.16.1, creates the Python
-  environment, and installs pinned tools and collections. `just packer-install`
+  environment with `python3.12`, and installs pinned tools and collections.
+  Pass an interpreter with `just deps /path/to/python3.12`. Setup rejects Python
+  below 3.12 and preserves incompatible existing environments for manual backup. `just packer-install`
   installs only Packer using `scripts/install-packer.py` (Linux x86_64/aarch64).
   Tools live in `.venv/vmware/bin/`, which recipes prepend to PATH. Update the
   installer checksums alongside the version when qualifying a new Packer release.
