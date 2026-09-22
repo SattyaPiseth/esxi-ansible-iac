@@ -92,7 +92,7 @@ sudo apt install -y just git python3-venv
 git clone <repository-url> esxi-ansible-iac
 cd esxi-ansible-iac
 just                         # List commands; performs no setup or deployment
-just deps                    # Create .venv/vmware, install Python tools and collections
+just deps                    # Create .venv/vmware, install Packer, Python tools and collections
 just secrets-init            # Copy inventory and Packer examples; preserve existing files
 just vaultpass               # Hidden password prompt with confirmation; creates mode 0600
 ```
@@ -113,8 +113,9 @@ just validate                # Inventory graph, live ESXi validation, site synta
 ```
 
 The recipes use `.venv/vmware/bin/` directly; no virtual-environment activation is
-needed. Run `just` as your regular operator account. Packer 1.16.1 must be installed
-separately as described in Prerequisites. `secrets-init` creates files with mode
+needed. Run `just` as your regular operator account. The dependency recipe installs checksum-verified
+Packer 1.16.1 in `.venv/vmware/bin/`; all recipes include that directory on PATH.
+For an existing checkout missing Packer, run `just packer-install`. `secrets-init` creates files with mode
 0600 and never overwrites existing files. Packer variable files remain local,
 Git-ignored HCL files; `secrets-encrypt` only encrypts the inventory files.
 
@@ -145,6 +146,7 @@ source .venv/vmware/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
 ansible-galaxy collection install -r requirements.yml
+python3 scripts/install-packer.py
 ansible-playbook playbooks/00-control-node.yml
 ```
 

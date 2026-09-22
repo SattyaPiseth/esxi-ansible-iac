@@ -47,7 +47,11 @@ The root `justfile` wraps existing workflows and supports Ubuntu 24.04's `just`
 [setup shortcuts](../README.md#shortcuts-with-just-ubuntu-2404-control-node) for the
 ordered operator workflow.
 
-- `just deps` creates the Python environment and installs pinned tools and collections.
+- `just deps` installs checksum-verified Packer 1.16.1, creates the Python
+  environment, and installs pinned tools and collections. `just packer-install`
+  installs only Packer using `scripts/install-packer.py` (Linux x86_64/aarch64).
+  Tools live in `.venv/vmware/bin/`, which recipes prepend to PATH. Update the
+  installer checksums alongside the version when qualifying a new Packer release.
 - `just secrets-init`, `just vaultpass`, and `just secrets-encrypt` use
   `scripts/local-secrets.py`. New local files are mode 0600; initialization never
   overwrites existing files. Password entry is interactive and hidden.
@@ -58,7 +62,7 @@ ordered operator workflow.
 
 When changing these wrappers, verify compatibility with `just` 1.21, argument
 forwarding, and preservation of existing secrets. Run
-`python3 -m unittest discover -s tests -p 'test_local_setup.py'` and `just --list`.
+`python3 -m unittest discover -s tests` and `just --list`.
 Do not run VM builds to test wrapper changes.
 
 ## 1. Inventory and secrets

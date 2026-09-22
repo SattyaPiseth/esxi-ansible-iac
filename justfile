@@ -1,17 +1,22 @@
 # Compatible with Ubuntu 24.04's just 1.21.
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set positional-arguments
+export PATH := justfile_directory() + "/.venv/vmware/bin:" + env_var("PATH")
 
 # Show available project commands.
 default:
     @just --list
 
-# Install pinned Python tools and Ansible collections (no venv activation needed).
-deps:
+# Install Packer, pinned Python tools, and Ansible collections.
+deps: packer-install
     python3 -m venv .venv/vmware
     .venv/vmware/bin/python -m pip install --upgrade pip
     .venv/vmware/bin/python -m pip install -r requirements-dev.txt
     .venv/vmware/bin/ansible-galaxy collection install -r requirements.yml
+
+# Install checksum-verified Packer 1.16.1 locally (no sudo required).
+packer-install:
+    @python3 scripts/install-packer.py
 
 # Copy local inventory and Packer examples without replacing existing files.
 secrets-init:
