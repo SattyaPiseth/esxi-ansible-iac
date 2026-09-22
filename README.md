@@ -82,6 +82,59 @@ required on managed hosts.
 
 Supporting guides: [inventory and secrets](docs/feature-maintenance.md#1-inventory-and-secrets) and [control-node dependencies](docs/feature-maintenance.md#2-control-node-dependencies).
 
+### Shortcuts with `just` (Ubuntu 24.04 control node)
+
+Install the command runner and Python bootstrap tools, then clone the project:
+
+```bash
+sudo apt update
+sudo apt install -y just git python3-venv
+git clone <repository-url> esxi-ansible-iac
+cd esxi-ansible-iac
+just                         # List commands; performs no setup or deployment
+just deps                    # Create .venv/vmware, install Python tools and collections
+just secrets-init            # Copy inventory and Packer examples; preserve existing files
+just vaultpass               # Hidden password prompt with confirmation; creates mode 0600
+```
+
+Edit the copied inventory secrets and Packer variables before continuing.
+Replace the SSH public-key placeholder, or set `guest_additional_authorized_keys: []`
+if only the default automation key is needed. Remove local per-VM Packer variable
+files for VMs you do not intend to build, including copied test VM examples.
+When using existing encrypted vaults, enter their existing Vault password.
+Existing `.vaultpass` files are preserved. Store a recoverable copy of the password
+in your password manager.
+
+```bash
+just secrets-encrypt         # Encrypt inventory vaults and SSH keys; skip encrypted files
+just control-node --ask-become-pass  # Install system dependencies and VMware SDKs
+just syntax                  # Local site syntax check
+just validate                # Inventory graph, live ESXi validation, site syntax check
+```
+
+The recipes use `.venv/vmware/bin/` directly; no virtual-environment activation is
+needed. Run `just` as your regular operator account. Packer 1.16.1 must be installed
+separately as described in Prerequisites. `secrets-init` creates files with mode
+0600 and never overwrites existing files. Packer variable files remain local,
+Git-ignored HCL files; `secrets-encrypt` only encrypts the inventory files.
+
+After reviewing the local Packer variables:
+
+```bash
+just packer-validate esxi-6.7
+just packer-validate esxi-8
+just packer-build esxi-6.7     # Creates the VMs selected by local variable files
+just packer-build esxi-8
+
+# Build only one VM, or start a batch at a selected VM:
+just packer-build esxi-8 packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
+just packer-build esxi-8 --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-02.pkrvars.hcl
+```
+
+Both Packer recipes require an explicit ESXi target and use the existing build
+wrapper. Validation does not create VMs. The commands below remain available for
+manual setup without `just`.
+
 ### 1. Install dependencies
 
 ```bash
