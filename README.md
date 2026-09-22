@@ -379,6 +379,13 @@ See [per-node kube-vip interface handling](docs/kube-vip-per-node-interface.md) 
 
 Maintenance reference: [Longhorn node preparation](docs/feature-maintenance.md#11-longhorn-node-preparation).
 
+For new workers, follow [first-time disk setup](docs/feature-maintenance.md#first-time-longhorn-disk-setup)
+to identify the non-OS disk, record its stable ID, and explicitly authorize blank-disk
+initialization. The commands below reconcile already prepared disks.
+For ongoing operations, see [disk troubleshooting](docs/feature-maintenance.md#longhorn-disk-troubleshooting),
+the [verification checklist](docs/feature-maintenance.md#longhorn-verification-checklist),
+and the [disk replacement procedure](docs/feature-maintenance.md#longhorn-disk-replacement).
+
 ```bash
 ansible-playbook playbooks/16-longhorn-node-prepare.yml --check --limit ubuntu_24.04-wrk-01
 ansible-playbook playbooks/16-longhorn-node-prepare.yml --limit ubuntu_24.04-wrk-01

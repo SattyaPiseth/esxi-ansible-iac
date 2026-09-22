@@ -330,6 +330,9 @@ command intentionally represents external orchestration. Use `changed_when`,
 - Registered results can represent `skipped` or check-mode execution. Consumers
   must not assume normal `stdout` exists.
 
+Longhorn disk identification, formatting opt-in, verification, and replacement
+procedures are maintained in the [Longhorn node preparation guide](feature-maintenance.md#11-longhorn-node-preparation).
+
 ## Modules and collection support
 
 All module calls use fully qualified collection names, and every referenced

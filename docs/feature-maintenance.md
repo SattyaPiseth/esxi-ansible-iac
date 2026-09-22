@@ -591,6 +591,81 @@ Installs iSCSI, NFS, encryption, kernel-module, mount, and optional dedicated-di
 - `longhorn_node_prepare_enable_disk_format`
 - Optional multipath disablement
 
+### First-time Longhorn disk setup
+
+Run these read-only commands **on each worker** to identify its dedicated data
+disk and the physical disk backing the OS:
+
+```bash
+lsblk -p -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+lsblk -s -p -o NAME,TYPE,SIZE "$(findmnt -n -o SOURCE /)"
+ls -l /dev/disk/by-id/
+```
+
+Select the dedicated data disk by its identity, size, layout, and usage. It must
+be absent from the root-device ancestry and must not contain data you need to
+preserve. Do not assume `/dev/sdb` is always the data disk. Devices presented by
+existing Longhorn volumes are not candidates for the backing data disk.
+
+After verifying the device, list its stable identifiers. The example below uses
+`/dev/sdb`; substitute the device you identified:
+
+```bash
+find -L /dev/disk/by-id -maxdepth 1 -samefile /dev/sdb -print
+```
+
+For a VMware data disk, select its whole-disk `scsi-36000...` or `wwn-0x...`
+identifier, without a partition suffix such as `-part1`. Confirm that the chosen
+symlink resolves to an existing verified disk with `readlink -e <full-by-id-path>`
+(replace the placeholder with the complete path).
+If no stable identifier exists, resolve device identification before enabling
+preparation; do not substitute a `/dev/sdX` path.
+
+On the **control node**, set the complete identifier in that worker's
+`inventories/production/host_vars/<worker>/longhorn.yml`:
+
+```yaml
+longhorn_node_prepare_data_device: /dev/disk/by-id/REPLACE_WITH_VERIFIED_DISK_ID
+```
+
+Each worker needs its own verified identifier. Re-identify the disk after VM
+recreation or disk replacement; the committed production IDs are not templates
+for new disks. Production already enables `longhorn_node_prepare_has_data_disk`
+in `group_vars/longhorn_nodes.yml`; verify every selected worker's path before
+running the playbook. For a new inventory, enable this setting only after
+identifying the dedicated disks.
+
+For a verified blank disk, preview and then initialize **one worker at a time**
+from the control node. Replace the example worker name as appropriate:
+
+```bash
+ansible-playbook playbooks/16-longhorn-node-prepare.yml \
+  --limit ubuntu_24.04-wrk-01 --check \
+  -e '{"longhorn_node_prepare_enable_disk_format": true}'
+
+# Run only after reviewing a successful preview:
+ansible-playbook playbooks/16-longhorn-node-prepare.yml \
+  --limit ubuntu_24.04-wrk-01 \
+  -e '{"longhorn_node_prepare_enable_disk_format": true}'
+```
+
+Keep formatting disabled in persistent configuration. Existing prepared disks
+use the normal procedure below without the formatting override. The role rejects
+root devices, partitioned disks, conflicting mounts, and incompatible detected
+filesystems. These checks supplement operator identification; a missing filesystem
+signature alone does not prove a disk contains no valuable data.
+
+The role mounts the filesystem by UUID and verifies its UUID and filesystem type.
+On the worker, confirm both the active mount and persistent fstab entry:
+
+```bash
+findmnt --mountpoint /var/lib/longhorn -o SOURCE,UUID,FSTYPE,TARGET,OPTIONS
+findmnt --fstab --target /var/lib/longhorn -o SOURCE,TARGET,FSTYPE,OPTIONS
+```
+
+Use the configured data path if it differs from `/var/lib/longhorn`. This workflow
+prepares host storage; in-cluster Longhorn deployment remains owned by GitOps.
+
 ### Safe update procedure
 
 ```bash
@@ -608,6 +683,96 @@ commands and an active iSCSI daemon run only during normal execution because
 package installation and service activation are only predicted in check mode.
 
 Disk formatting must remain disabled unless a verified, empty target device is intentionally being initialized. Before node maintenance, confirm Longhorn replica health, free capacity, and data locality. In-cluster Longhorn deployment and volumes remain owned by GitOps.
+
+### Longhorn disk troubleshooting
+
+| Symptom | Checks and next action |
+|---|---|
+| No suitable `/dev/disk/by-id/` entry | Confirm that the dedicated virtual disk is attached and visible in `lsblk`. Check its identity exposure in the VM configuration before proceeding. Do not fall back to `/dev/sdX`. |
+| Configured ID is missing or stale | Run `ls -l` and `readlink -e` on the configured path. Rediscover the disk after replacement or VM recreation, then update only the affected worker's host variables. |
+| Root-device or disk-layout assertion fails | Recheck root ancestry and disk partitions. This role expects a dedicated whole disk with no child partitions; do not erase partitions to bypass the check. |
+| Blank disk rejected | Verify disk ownership and contents, then use the temporary formatting override from the first-time procedure for both preview and execution. |
+| Filesystem type differs | Inspect the existing filesystem and its data. Choose the intended supported filesystem configuration or plan a migration; do not force-format it. |
+| Mount source differs or disk is mounted elsewhere | Compare the configured device, active mount, and fstab UUID. Resolve the ownership or mount conflict before rerunning. |
+| Unmounted data directory contains files | Determine whether the intended data disk is missing or data was written to the OS filesystem. Do not delete the directory or mount over its contents to clear the assertion. |
+| Normal health checks fail after a successful preview | Check the specific failed command, iSCSI service, kernel support, or mount propagation. Preview does not execute every post-installation check. |
+
+On the affected worker, use these read-only checks to inspect a mount or service
+failure. Substitute the configured path if it differs:
+
+```bash
+findmnt --mountpoint /var/lib/longhorn -o SOURCE,UUID,FSTYPE,TARGET,OPTIONS
+findmnt --fstab --target /var/lib/longhorn -o SOURCE,TARGET,FSTYPE,OPTIONS
+systemctl status iscsid.service --no-pager
+journalctl -u iscsid.service -n 50 --no-pager
+```
+
+### Longhorn verification checklist
+
+Before declaring host preparation complete, verify each worker:
+
+- Its configured stable ID resolves to the intended disk outside the OS ancestry.
+- The active mount uses that disk, the configured filesystem, and the configured
+  data path; fstab uses the same filesystem UUID.
+- Normal execution finishes with `failed=0` and `unreachable=0`. A reconciled
+  worker normally reports `changed=0`; first-time preparation may report changes.
+  Kernel-module loading uses `changed_when: false`, so the recap is not proof
+  that no command ran or runtime state changed.
+- Read the failed task rather than relying only on recap counts. In preview,
+  command prerequisites and active-iSCSI validation are intentionally skipped.
+
+After Longhorn is deployed, check cluster storage separately from host preparation.
+Run these read-only commands from a machine with the intended kubeconfig:
+
+```bash
+kubectl config current-context
+kubectl -n argocd get applications.argoproj.io longhorn
+kubectl -n longhorn-system get pods
+kubectl -n longhorn-system get nodes.longhorn.io
+kubectl -n longhorn-system get volumes.longhorn.io
+kubectl -n longhorn-system get events --field-selector type=Warning --sort-by=.lastTimestamp
+```
+
+Check application sync and health, pod readiness and restart history, node/disk
+readiness and scheduling, and each volume's health and replica placement. An
+empty volume list does not test provisioning. A healthy status at one point in
+time or successful host playbook does not establish sustained storage stability; investigate recent
+probe failures, repeated restarts, or replica warnings. New clusters without the
+Longhorn application should deploy it through GitOps before these checks.
+
+### Longhorn disk replacement
+
+This is a planned replacement procedure for a recoverable disk. If a disk has
+failed and holds the only usable replica, stop and establish a volume recovery
+or backup-restore plan before initializing anything. The host-preparation role
+does not recover Longhorn volume data or evacuate replicas.
+
+1. Identify the affected worker, physical disk, Longhorn disk entry, and volumes.
+   Establish a usable recovery path and sufficient eligible replacement capacity.
+2. Disable scheduling on the old Longhorn disk and request replica eviction.
+   Wait for replicas and backing images to leave before removing the disk entry.
+   Disabling scheduling alone does not move existing data. Follow the installed
+   release's [disk removal](https://longhorn.io/docs/1.12.1/nodes-and-volumes/nodes/multidisk/)
+   and [eviction](https://longhorn.io/docs/1.12.1/nodes-and-volumes/nodes/disks-or-nodes-eviction/)
+   guidance; select the documentation version matching the deployment.
+3. Confirm affected volumes retain the required healthy replicas elsewhere.
+   If eviction stalls, resolve capacity or scheduling constraints first. With
+   three workers and three replicas under hard node anti-affinity, the remaining
+   two workers cannot accommodate all three replicas; additional eligible
+   capacity may be required. See the upstream
+   [eviction prerequisites](https://longhorn.io/kb/how-to-evict-node-during-capi-node-rolling-replacement/).
+4. Coordinate workload and node maintenance, release use of the old mount, then
+   unmount and replace the verified data disk. Do not detach an in-use disk or
+   format a mounted filesystem. Preserve the old disk until recovery is verified.
+5. Repeat [first-time discovery](#first-time-longhorn-disk-setup) and update that
+   worker's stable ID. Confirm the mount path is available and contains no
+   unexpected files. Preview and initialize only the verified blank replacement,
+   with the temporary formatting override and a single-worker limit.
+6. Verify the new filesystem UUID, fstab entry, active mount, and normal host
+   checks. Reconcile the replacement disk in Longhorn through the operational
+   workflow, then enable scheduling and verify replica rebuilds and volume health
+   before replacing another disk. Do not copy old Longhorn disk identity metadata
+   to make a fresh filesystem appear to be the removed disk.
 
 ## 12. Automated Argo CD v3 bootstrap
 
