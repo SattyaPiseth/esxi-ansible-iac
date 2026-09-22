@@ -169,7 +169,11 @@ exactly and assign each VM once.
 Lifecycle plays initially select both ESXi hosts. Each host filters the request
 against its own list. A request for `ubuntu_24.04-wrk-01` skips ESXi 6.7 and
 executes only on ESXi 8. This is explicit routing, not live discovery; a
-duplicate VM on another ESXi host does not acquire ownership.
+duplicate VM on another ESXi host does not acquire ownership. Single-VM power
+and deletion requests also check that the selected lifecycle hosts include the
+owner. A limit selecting only the other ESXi host fails with the owner named in
+the error. If no lifecycle hosts match at all, Ansible runs no tasks, so inspect
+`--list-hosts` before execution.
 
 ## Workflow graph
 
@@ -303,7 +307,10 @@ Project-specific rules are:
 - unreliable key-fingerprint commands are omitted in check mode;
 - NTP convergence waiting is skipped because preview mode does not enable NTP;
 - live Netplan application and verification are skipped during preview;
-- destructive workflows retain their safety assertions.
+- destructive workflows retain their safety assertions;
+- Longhorn previews run read-only disk, kernel, and mount probes, retaining disk
+  safety checks while deferring verification of newly created filesystems and
+  mounts; installed-command and active-iSCSI checks wait for normal execution.
 
 A second normal run should report no change unless live state drifted or a
 command intentionally represents external orchestration. Use `changed_when`,
@@ -360,11 +367,14 @@ Official references:
 ## Validation and extension
 
 CI and local pre-commit checks use the pinned requirements and validate the
-inventory, YAML, Ansible lint rules, and every playbook's syntax:
+inventory, YAML, Ansible lint rules, and every playbook's syntax. CI also runs the
+offline regression suite, with `just` installed for wrapper coverage. Run that
+suite separately from pre-commit locally:
 
 ```bash
 source .venv/vmware/bin/activate
 ansible-galaxy collection install --requirement requirements.yml
+python -m unittest discover -s tests -v
 PATH="$PWD/.venv/vmware/bin:$PATH" \
   .venv/vmware/bin/pre-commit run --all-files
 git diff --check

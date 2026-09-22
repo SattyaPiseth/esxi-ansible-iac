@@ -7,6 +7,7 @@
       - ^CONFIG_NFS_V4(_1|_2)?=(y|m)$
       - "/boot/config-{{ ansible_facts['kernel'] }}"
   changed_when: false
+  check_mode: false
   failed_when: false
   register: longhorn_node_prepare_nfs_kernel_config
 
@@ -25,8 +26,10 @@
       - command -v "$1" >/dev/null
       - longhorn-command-check
       - "{{ item }}"
+  when: not ansible_check_mode
   loop: "{{ longhorn_node_prepare_required_commands }}"
   changed_when: false
+  check_mode: false
 
 - name: Read kubelet mount propagation
   ansible.builtin.command:
@@ -38,6 +41,7 @@
       - --output
       - PROPAGATION
   changed_when: false
+  check_mode: false
   register: longhorn_node_prepare_mount_propagation
 
 - name: Validate kubelet mount propagation
@@ -48,15 +52,18 @@
       Longhorn requires shared mount propagation for the kubelet mount tree.
 
 - name: Check iSCSI daemon state
+  when: not ansible_check_mode
   ansible.builtin.command:
     argv:
       - systemctl
       - is-active
       - iscsid.service
   changed_when: false
+  check_mode: false
   register: longhorn_node_prepare_iscsid_state
 
 - name: Validate iSCSI daemon state
+  when: not ansible_check_mode
   ansible.builtin.assert:
     that:
       - longhorn_node_prepare_iscsid_state.stdout == 'active'

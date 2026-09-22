@@ -29,6 +29,23 @@
           Pass -e vm_power_name=<managed-name>, or use -e scope=all.
       run_once: true
 
+    - name: Validate selected hosts include the VM owner
+      ansible.builtin.assert:
+        that:
+          - vm_power_name in selected_managed_vm_names
+        fail_msg: >-
+          VM '{{ vm_power_name }}' belongs to
+          {{ managed_vm_esxi_ownership | dict2items
+              | selectattr('value', 'contains', vm_power_name)
+              | map(attribute='key') | join(', ') }}.
+          Include its owning ESXi host in --limit, or remove --limit.
+      vars:
+        selected_managed_vm_names: >-
+          {{ ansible_play_hosts_all
+              | map('extract', managed_vm_esxi_ownership) | flatten | list }}
+      when: vm_power_scope == 'single'
+      run_once: true
+
     - name: Validate host-owned VM power targets
       ansible.builtin.assert:
         that:

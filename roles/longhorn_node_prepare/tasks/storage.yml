@@ -44,6 +44,7 @@
           - -f
           - "{{ longhorn_node_prepare_data_device }}"
       changed_when: false
+      check_mode: false
       register: longhorn_node_prepare_data_device_resolved
 
     - name: Read root filesystem source
@@ -55,6 +56,7 @@
           - SOURCE
           - /
       changed_when: false
+      check_mode: false
       register: longhorn_node_prepare_root_source
 
     - name: Read root filesystem device ancestry
@@ -67,6 +69,7 @@
           - PATH
           - "{{ longhorn_node_prepare_root_source.stdout | trim }}"
       changed_when: false
+      check_mode: false
       register: longhorn_node_prepare_root_device_ancestry
 
     - name: Read Longhorn data device layout
@@ -79,6 +82,7 @@
           - TYPE
           - "{{ longhorn_node_prepare_data_device_resolved.stdout | trim }}"
       changed_when: false
+      check_mode: false
       register: longhorn_node_prepare_data_device_layout
 
     - name: Read Longhorn data device filesystem
@@ -91,6 +95,7 @@
           - TYPE
           - "{{ longhorn_node_prepare_data_device }}"
       changed_when: false
+      check_mode: false
       failed_when: longhorn_node_prepare_data_device_filesystem.rc not in [0, 2]
       register: longhorn_node_prepare_data_device_filesystem
 
@@ -104,6 +109,7 @@
           - MOUNTPOINTS
           - "{{ longhorn_node_prepare_data_device_resolved.stdout | trim }}"
       changed_when: false
+      check_mode: false
       register: longhorn_node_prepare_data_device_mounts
 
     - name: Inspect Longhorn data path
@@ -121,6 +127,7 @@
           - --output
           - SOURCE
       changed_when: false
+      check_mode: false
       failed_when: longhorn_node_prepare_existing_data_mount.rc not in [0, 1]
       register: longhorn_node_prepare_existing_data_mount
       when: longhorn_node_prepare_data_path_status.stat.exists
@@ -132,6 +139,7 @@
           - -f
           - "{{ longhorn_node_prepare_existing_data_mount.stdout | trim }}"
       changed_when: false
+      check_mode: false
       register: longhorn_node_prepare_existing_data_mount_resolved
       when:
         - longhorn_node_prepare_data_path_status.stat.exists
@@ -195,52 +203,74 @@
         force: false
       become: true
 
-    - name: Read Longhorn data filesystem UUID
-      ansible.builtin.command:
-        argv:
-          - blkid
-          - --output
-          - value
-          - --match-tag
-          - UUID
-          - "{{ longhorn_node_prepare_data_device }}"
-      changed_when: false
-      register: longhorn_node_prepare_data_device_uuid
+    - name: Preview new Longhorn data mount
+      ansible.builtin.debug:
+        msg: >-
+          Would format {{ longhorn_node_prepare_data_device }} as
+          {{ longhorn_node_prepare_data_filesystem }} and mount it at
+          {{ longhorn_node_prepare_data_path }} using its new filesystem UUID.
+      when:
+        - ansible_check_mode
+        - longhorn_node_prepare_data_device_filesystem.stdout | trim | length == 0
 
-    - name: Validate Longhorn data filesystem UUID
-      ansible.builtin.assert:
-        that:
-          - longhorn_node_prepare_data_device_uuid.stdout | trim | length > 0
-        fail_msg: "The prepared Longhorn data disk has no filesystem UUID."
+    - name: Configure mount for an available Longhorn filesystem
+      when: >-
+        not ansible_check_mode
+        or longhorn_node_prepare_data_device_filesystem.stdout | trim | length > 0
+      block:
+        - name: Read Longhorn data filesystem UUID
+          ansible.builtin.command:
+            argv:
+              - blkid
+              - --output
+              - value
+              - --match-tag
+              - UUID
+              - "{{ longhorn_node_prepare_data_device }}"
+          changed_when: false
+          check_mode: false
+          register: longhorn_node_prepare_data_device_uuid
 
-    - name: Mount Longhorn data filesystem
-      ansible.posix.mount:
-        path: "{{ longhorn_node_prepare_data_path }}"
-        src: "UUID={{ longhorn_node_prepare_data_device_uuid.stdout | trim }}"
-        fstype: "{{ longhorn_node_prepare_data_filesystem }}"
-        opts: "{{ longhorn_node_prepare_data_mount_options }}"
-        state: mounted
-      become: true
+        - name: Validate Longhorn data filesystem UUID
+          ansible.builtin.assert:
+            that:
+              - longhorn_node_prepare_data_device_uuid.stdout | trim | length > 0
+            fail_msg: "The prepared Longhorn data disk has no filesystem UUID."
 
-    - name: Verify Longhorn data mount
-      ansible.builtin.command:
-        argv:
-          - findmnt
-          - --mountpoint
-          - "{{ longhorn_node_prepare_data_path }}"
-          - --noheadings
-          - --output
-          - UUID,FSTYPE
-      changed_when: false
-      register: longhorn_node_prepare_data_mount
+        - name: Mount Longhorn data filesystem
+          ansible.posix.mount:
+            path: "{{ longhorn_node_prepare_data_path }}"
+            src: "UUID={{ longhorn_node_prepare_data_device_uuid.stdout | trim }}"
+            fstype: "{{ longhorn_node_prepare_data_filesystem }}"
+            opts: "{{ longhorn_node_prepare_data_mount_options }}"
+            state: mounted
+          become: true
 
-    - name: Validate Longhorn data mount
-      ansible.builtin.assert:
-        that:
-          - >-
-            (longhorn_node_prepare_data_mount.stdout | trim).split()[0]
-            == longhorn_node_prepare_data_device_uuid.stdout | trim
-          - >-
-            (longhorn_node_prepare_data_mount.stdout | trim).split()[1]
-            == longhorn_node_prepare_data_filesystem
-        fail_msg: "The dedicated Longhorn filesystem is not mounted correctly."
+    - name: Verify an existing Longhorn mount
+      when: >-
+        not ansible_check_mode
+        or (longhorn_node_prepare_existing_data_mount.rc | default(1)) == 0
+      block:
+        - name: Verify Longhorn data mount
+          ansible.builtin.command:
+            argv:
+              - findmnt
+              - --mountpoint
+              - "{{ longhorn_node_prepare_data_path }}"
+              - --noheadings
+              - --output
+              - UUID,FSTYPE
+          changed_when: false
+          check_mode: false
+          register: longhorn_node_prepare_data_mount
+
+        - name: Validate Longhorn data mount
+          ansible.builtin.assert:
+            that:
+              - >-
+                (longhorn_node_prepare_data_mount.stdout | trim).split()[0]
+                == longhorn_node_prepare_data_device_uuid.stdout | trim
+              - >-
+                (longhorn_node_prepare_data_mount.stdout | trim).split()[1]
+                == longhorn_node_prepare_data_filesystem
+            fail_msg: "The dedicated Longhorn filesystem is not mounted correctly."

@@ -321,7 +321,7 @@ just vm-power-all powered-on --limit vm_esxi_6.7
 To resume a suspended VM, explicitly enable the VMware module's force option:
 
 ```bash
-just vm-power Ubuntu22.04_Jenkins powered-on -e '{"vm_power_enable_force": true}'
+just vm-power ubuntu_24.04-mgmt-01 powered-on -e '{"vm_power_enable_force": true}'
 ```
 
 `vm_power_enable_force` defaults to false. The module requires it when the current
@@ -335,6 +335,9 @@ the recipes do not maintain a separate allowed-state list. These commands apply
 power operations immediately. `vm-power-all` without `--limit` targets all managed
 VMs across both ESXi hosts. VM names must belong to the managed inventory; adding
 a Packer variable file alone does not register a VM for power management.
+For single-VM power and deletion requests, a limit selecting the other ESXi host
+fails with a message naming the owner. A limit matching no lifecycle hosts runs
+no tasks; check host selection with `--list-hosts` first.
 Use the single-VM command for targeted maintenance; these wrappers do not drain
 Kubernetes workloads or orchestrate rolling restarts.
 
@@ -377,7 +380,8 @@ See [per-node kube-vip interface handling](docs/kube-vip-per-node-interface.md) 
 Maintenance reference: [Longhorn node preparation](docs/feature-maintenance.md#11-longhorn-node-preparation).
 
 ```bash
-ansible-playbook playbooks/16-longhorn-node-prepare.yml
+ansible-playbook playbooks/16-longhorn-node-prepare.yml --check --limit ubuntu_24.04-wrk-01
+ansible-playbook playbooks/16-longhorn-node-prepare.yml --limit ubuntu_24.04-wrk-01
 ```
 
 Longhorn workloads and application volumes should normally be reconciled by the GitOps repository. Avoid creating a second source of truth here.
@@ -497,6 +501,8 @@ Treat failed probes as symptoms: inspect pod events, logs, resources, and depend
 Maintenance reference: [CI and repository quality](docs/feature-maintenance.md#14-ci-and-repository-quality).
 
 ```bash
+source .venv/vmware/bin/activate
+python -m unittest discover -s tests -v
 scripts/validate-packer.sh
 python3 scripts/check-markdown-links.py
 pre-commit run --all-files
@@ -504,6 +510,10 @@ git diff --check
 git diff --stat
 git status --short
 ```
+
+The regression suite uses local substitutes for infrastructure operations. Install
+`just` to run the wrapper tests; they are skipped when it is unavailable. CI
+installs `just` and runs the full suite.
 
 When extending the project:
 

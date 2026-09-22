@@ -40,6 +40,23 @@
           -e vm_delete_all_confirmation_phrase={{ vm_delete_required_all_confirmation_phrase }}.
       run_once: true
 
+    - name: Validate selected hosts include the VM owner
+      ansible.builtin.assert:
+        that:
+          - vm_delete_name in selected_managed_vm_names
+        fail_msg: >-
+          VM '{{ vm_delete_name }}' belongs to
+          {{ managed_vm_esxi_ownership | dict2items
+              | selectattr('value', 'contains', vm_delete_name)
+              | map(attribute='key') | join(', ') }}.
+          Include its owning ESXi host in --limit, or remove --limit.
+      vars:
+        selected_managed_vm_names: >-
+          {{ ansible_play_hosts_all
+              | map('extract', managed_vm_esxi_ownership) | flatten | list }}
+      when: vm_delete_scope == 'single'
+      run_once: true
+
     - name: Validate host-owned VM deletion targets
       ansible.builtin.assert:
         that:

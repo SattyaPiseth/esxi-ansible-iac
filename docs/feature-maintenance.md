@@ -243,7 +243,11 @@ Validates ESXi credentials and placement, gathers facts, lists VMs, verifies man
 - `esxi_allowed_power_states` in `group_vars/vmware_esxi.yml`
 - `just vm-power-states`, `just vm-power VM STATE`, and `just vm-power-all STATE`
   wrap existing power operations. Bulk scope is explicit; `--limit` selects owning
-  ESXi inventory hosts. State validation and VM ownership remain in Ansible.
+  ESXi inventory hosts. Single-VM power and deletion requests fail when the
+  selected lifecycle hosts exclude the VM owner; the error identifies the required host.
+  If a limit matches no lifecycle hosts, Ansible runs no tasks; inspect
+  `--list-hosts` before execution.
+  State validation and VM ownership remain in Ansible.
 - `just vm-delete VM CONFIRMATION` requires the exact VM name twice and fixes
   scope to one VM; append `--check` for an Ansible preview. It delegates to
   `05-vm-delete.yml` without changing the role's UUID or force controls.
@@ -596,6 +600,13 @@ ansible-playbook playbooks/16-longhorn-node-prepare.yml \
   --limit <worker>
 ```
 
+Check mode runs read-only disk, kernel, and mount probes and retains disk safety
+checks. For an approved blank disk, it reports the planned format and mount; UUID
+and mount verification wait until the filesystem exists. Existing filesystems
+can preview mount changes, and existing mounts are verified. Checks for installed
+commands and an active iSCSI daemon run only during normal execution because
+package installation and service activation are only predicted in check mode.
+
 Disk formatting must remain disabled unless a verified, empty target device is intentionally being initialized. Before node maintenance, confirm Longhorn replica health, free capacity, and data locality. In-cluster Longhorn deployment and volumes remain owned by GitOps.
 
 ## 12. Automated Argo CD v3 bootstrap
@@ -685,6 +696,7 @@ remains valid.
 
 ### Owned files
 
+- `tests/`
 - `.github/workflows/validate.yml`
 - `.pre-commit-config.yaml`
 - `scripts/validate-packer.sh`
@@ -696,6 +708,8 @@ remains valid.
 
 ### Current checks
 
+- Offline regression tests for setup, wrappers, VM owner selection, and Longhorn previews
+  (CI installs `just` so wrapper tests run)
 - Production inventory graph
 - Packer formatting and every committed ESXi/VM example combination
 - YAML lint
@@ -707,6 +721,7 @@ remains valid.
 
 ```bash
 source .venv/vmware/bin/activate
+python -m unittest discover -s tests -v
 scripts/validate-packer.sh
 python3 scripts/check-markdown-links.py
 PATH="$PWD/.venv/vmware/bin:$PATH" \
