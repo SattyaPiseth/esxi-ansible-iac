@@ -46,9 +46,12 @@ def install():
         print(f"Downloading {url}", flush=True)
         with urllib.request.urlopen(url, timeout=120) as response, archive.open("wb") as stream:
             shutil.copyfileobj(response, stream)
+        # Stream the checksum using APIs available on Python 3.10.
+        digest = hashlib.sha256()
         with archive.open("rb") as stream:
-            digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        if digest != CHECKSUMS[architecture]:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != CHECKSUMS[architecture]:
             raise SystemExit("Packer archive checksum mismatch; existing installation preserved.")
         binary = Path(directory) / "packer"
         with zipfile.ZipFile(archive) as package, package.open("packer") as source, binary.open("wb") as stream:

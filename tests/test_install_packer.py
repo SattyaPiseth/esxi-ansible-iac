@@ -33,8 +33,10 @@ class PackerInstallerTests(unittest.TestCase):
 
     def test_verified_archive_installs_executable(self):
         archive = io.BytesIO()
+        # Exercise checksum streaming across more than one read.
+        payload = b"verified binary" * 100_000
         with zipfile.ZipFile(archive, "w") as package:
-            package.writestr("packer", b"verified binary")
+            package.writestr("packer", payload)
         data = archive.getvalue()
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "bin/packer"
@@ -46,7 +48,7 @@ class PackerInstallerTests(unittest.TestCase):
                 INSTALLER.CHECKSUMS, {"arm64": hashlib.sha256(data).hexdigest()}
             ):
                 INSTALLER.install()
-            self.assertEqual(destination.read_bytes(), b"verified binary")
+            self.assertEqual(destination.read_bytes(), payload)
             self.assertEqual(destination.stat().st_mode & 0o777, 0o755)
 
     def test_matching_version_skips_download(self):
