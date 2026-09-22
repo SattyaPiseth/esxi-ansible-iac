@@ -159,7 +159,8 @@ packer/build-ubuntu-vms.sh --target esxi-6.7
 packer/build-ubuntu-vms.sh --target esxi-8
 ```
 
-Preview validation without creating a VM, or build/resume one VM:
+Validate without creating a VM, build one selected VM, or start a multi-VM
+batch at a selected variable file:
 
 ```bash
 packer/build-ubuntu-vms.sh --target esxi-6.7 --validate-only
@@ -172,6 +173,10 @@ packer/build-ubuntu-vms.sh \
   --target esxi-8 \
   --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
 ```
+
+`--start-at` filters the ordered variable-file list; it does not resume the
+internal state of an interrupted Packer build. A partially created VM may
+still require inspection or cleanup before rebuilding it.
 
 The required target prevents mixing one ESXi host's common variables with the
 other host's VM definitions. Local `*.pkrvars.hcl` files may contain credentials
@@ -283,8 +288,10 @@ expected Argo CD version. It does not initialize Vault or expose secret values.
 
 `99-kubernetes-site.yml` renders the Kubespray inventory through
 `09-kubespray-deploy.yml`, but it does not apply the post-deployment MetalLB
-address pools or run the final health playbook. Run `13-kubespray-metallb.yml`
-and `14-kubernetes-health.yml` afterward when those checks are required.
+address pools or run the final health playbook. When using that base workflow,
+run `13-kubespray-metallb.yml` and `14-kubernetes-health.yml` afterward.
+`99-platform-site.yml` already composes both steps; do not run them again merely
+because the full platform workflow completed successfully.
 
 `99-platform-site.yml` composes those post-deployment steps and the guarded
 GitOps bootstrap. It requires both deployment enable flags and keeps the
@@ -347,6 +354,7 @@ Maintenance reference: [CI and repository quality](docs/feature-maintenance.md#1
 
 ```bash
 scripts/validate-packer.sh
+python3 scripts/check-markdown-links.py
 pre-commit run --all-files
 git diff --check
 git diff --stat

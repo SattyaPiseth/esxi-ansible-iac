@@ -75,6 +75,8 @@ When a configuration contract changes:
 3. Update the root README only if the operator workflow changes.
 4. Update a focused guide when its detailed procedure changes.
 5. Add or repair cross-links instead of copying the same procedure.
-6. Run relative-link validation and the repository pre-commit checks.
+6. Run `python3 scripts/check-markdown-links.py` and the repository pre-commit
+   checks. The link checker validates both relative file targets and Markdown
+   heading fragments.
 
 Generated files, runtime logs, credentials, and one-time incident notes do not belong in these documents.

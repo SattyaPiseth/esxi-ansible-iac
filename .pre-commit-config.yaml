@@ -19,3 +19,9 @@ repos:
         language: system
         files: ^(playbooks|roles|inventories)/.*\.ya?ml$
         pass_filenames: false
+      - id: markdown-links
+        name: Check Markdown relative links
+        entry: python3 scripts/check-markdown-links.py
+        language: system
+        files: ^(README\.md|docs/.*\.md)$
+        pass_filenames: false

@@ -219,9 +219,10 @@ The complete platform workflow extends that base-cluster workflow:
 ```
 
 MetalLB address pools and final health validation remain explicit follow-up
-steps (`13-kubespray-metallb.yml` and `14-kubernetes-health.yml`). Kubernetes
-reset, VM deletion, SSH recovery, and disk formatting are never part of normal
-reconciliation.
+steps only after `99-kubernetes-site.yml`. The complete
+`99-platform-site.yml` workflow composes both steps before Argo CD bootstrap.
+Kubernetes reset, VM deletion, SSH recovery, and disk formatting are never part
+of normal reconciliation.
 
 The validation ladder adds guarantees progressively:
 
@@ -237,6 +238,11 @@ The validation ladder adds guarantees progressively:
                   -> 14-kubernetes-health.yml
                      cluster services satisfy platform checks
 ```
+
+`00-validate.yml` validates the committed ESXi variables and the managed-VM
+ownership contract. It does not contact guest SSH services, prove that every VM
+exists, render Kubespray input, or validate live Kubernetes health; those
+guarantees belong to the later steps shown above.
 
 ## Preflight process
 
@@ -275,6 +281,15 @@ ansible-playbook playbooks/04-vm-power.yml \
 
 Stop if host selection, ownership, extra variables, proposed changes, or safety
 confirmations differ from the maintenance intent.
+
+Use the execution modes deliberately:
+
+| Mode | What it proves | What it does not prove |
+|---|---|---|
+| `--syntax-check` | YAML and Ansible parsing for the selected playbook | Inventory values, connectivity, or runtime behavior |
+| `--list-hosts`, `--list-tasks`, `--list-tags` | Static play scope and available task selection | That conditional or looped tasks will execute |
+| `--check --diff` | Supported modules' predicted changes | External command/API effects or complete postconditions |
+| Normal execution | Applies the requested workflow and its assertions | Safety outside the selected hosts and supplied extra variables |
 
 ## Check mode and idempotence
 

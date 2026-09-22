@@ -165,6 +165,10 @@ The wrapper validates local values for one target. A Packer build creates or
 replaces infrastructure; omit `--validate-only` only after a separate operator
 decision.
 
+`--start-at` skips earlier files in the selected, ordered VM-variable list. It
+does not restore an interrupted builder step or adopt a partially created VM;
+inspect or clean up partial ESXi state before rebuilding.
+
 Official references: [Packer init](https://developer.hashicorp.com/packer/docs/commands/init),
 [Packer validate](https://developer.hashicorp.com/packer/docs/commands/validate),
 [input variable validation](https://developer.hashicorp.com/packer/docs/templates/hcl_templates/variables),
@@ -411,7 +415,9 @@ nohup .venv/vmware/bin/ansible-playbook \
 `99-kubernetes-site.yml` prepares the controller and nodes and invokes this
 guarded base-cluster deployment. It does not run `13-kubespray-metallb.yml` or
 `14-kubernetes-health.yml`; apply MetalLB address pools and perform the final
-health validation as explicit post-deployment steps.
+health validation as explicit post-deployment steps. In contrast,
+`99-platform-site.yml` already runs both steps and then performs the guarded
+Argo CD bootstrap.
 
 Kubernetes or Kubespray version upgrades require release-note review, backup validation, supported upgrade-path confirmation, and a separate change window. Reset is destructive and must never be part of normal reconciliation.
 
@@ -633,6 +639,7 @@ remains valid.
 - `.github/workflows/validate.yml`
 - `.pre-commit-config.yaml`
 - `scripts/validate-packer.sh`
+- `scripts/check-markdown-links.py`
 - `.yamllint.yml`
 - `.ansible-lint`
 - `requirements-dev.txt`
@@ -645,12 +652,14 @@ remains valid.
 - YAML lint
 - Ansible lint
 - Syntax check for every playbook
+- Relative Markdown file and heading-fragment validation
 
 ### Local validation
 
 ```bash
 source .venv/vmware/bin/activate
 scripts/validate-packer.sh
+python3 scripts/check-markdown-links.py
 PATH="$PWD/.venv/vmware/bin:$PATH" \
   .venv/vmware/bin/pre-commit run --all-files
 git diff --check
