@@ -237,6 +237,9 @@ Validates ESXi credentials and placement, gathers facts, lists VMs, verifies man
 - `managed_vm_names`: complete VM list derived from the ownership map
 - `esxi_managed_vm_names`: per-ESXi list derived at execution time
 - `vm_power_state`
+- `vm_power_enable_force`: boolean, defaults to false; pass JSON extra variables
+  such as `-e '{"vm_power_enable_force": true}'` when resuming a suspended VM
+  with `powered-on`. This maps directly to the VMware module's `force` option.
 - `esxi_allowed_power_states` in `group_vars/vmware_esxi.yml`
 - `just vm-power-states`, `just vm-power VM STATE`, and `just vm-power-all STATE`
   wrap existing power operations. Bulk scope is explicit; `--limit` selects owning

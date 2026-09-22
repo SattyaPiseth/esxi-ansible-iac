@@ -1,3 +1,4 @@
 ---
 vm_power_name: ""
 vm_power_state: powered-on
+vm_power_enable_force: false

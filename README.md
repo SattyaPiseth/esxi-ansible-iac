@@ -318,6 +318,17 @@ just vm-power ubuntu_24.04-wrk-01 reboot-guest
 just vm-power-all powered-on --limit vm_esxi_6.7
 ```
 
+To resume a suspended VM, explicitly enable the VMware module's force option:
+
+```bash
+just vm-power Ubuntu22.04_Jenkins powered-on -e '{"vm_power_enable_force": true}'
+```
+
+`vm_power_enable_force` defaults to false. The module requires it when the current
+state is suspended. With `powered-on`, it permits the normal VMware PowerOn
+operation. Use a JSON boolean as shown; this option also affects other power
+operations, so enable it only for the intended request.
+
 Configured states are `powered-on`, `powered-off`, `shutdown-guest`,
 `reboot-guest`, `restarted`, and `suspended`. The inventory remains the authority;
 the recipes do not maintain a separate allowed-state list. These commands apply

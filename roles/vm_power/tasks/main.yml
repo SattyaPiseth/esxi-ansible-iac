@@ -14,6 +14,12 @@
     fail_msg: "Invalid vm_power_state '{{ vm_power_state | default('undefined') }}'. Allowed values: {{ esxi_allowed_power_states }}"
     success_msg: "VM power state '{{ vm_power_state }}' is valid."
 
+- name: Validate VM power force setting
+  ansible.builtin.assert:
+    that:
+      - vm_power_enable_force is boolean
+    fail_msg: "vm_power_enable_force must be a boolean; supply extra variables in JSON format."
+
 - name: Change VM power state
   vmware.vmware.vm_powerstate:
     hostname: "{{ esxi_hostname }}"
@@ -24,6 +30,7 @@
     folder: "{{ vm_power_folder | default(esxi_default_folder) }}"
     name: "{{ vm_power_name }}"
     state: "{{ vm_power_state }}"
+    force: "{{ vm_power_enable_force }}"
   no_log: true
   register: vm_power_result
 
