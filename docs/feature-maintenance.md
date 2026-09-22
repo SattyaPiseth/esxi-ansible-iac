@@ -237,6 +237,10 @@ Validates ESXi credentials and placement, gathers facts, lists VMs, verifies man
 - `managed_vm_names`: complete VM list derived from the ownership map
 - `esxi_managed_vm_names`: per-ESXi list derived at execution time
 - `vm_power_state`
+- `esxi_allowed_power_states` in `group_vars/vmware_esxi.yml`
+- `just vm-power-states`, `just vm-power VM STATE`, and `just vm-power-all STATE`
+  wrap existing power operations. Bulk scope is explicit; `--limit` selects owning
+  ESXi inventory hosts. State validation and VM ownership remain in Ansible.
 - `vm_delete_confirm`, `vm_delete_confirm_name`
 - Optional UUID and delete-all confirmations
 

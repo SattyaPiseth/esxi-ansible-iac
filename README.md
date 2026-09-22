@@ -283,6 +283,30 @@ ansible-playbook playbooks/04-vm-power.yml \
 ansible-playbook playbooks/99-guest-site.yml
 ```
 
+### VM power shortcuts
+
+`just` delegates power operations to `04-vm-power.yml`, which validates
+`esxi_allowed_power_states` from inventory and selects each VM's owning ESXi host.
+
+```bash
+just vm-power-states
+just vm-power ubuntu_24.04-mgmt-01 powered-on
+just vm-power ubuntu_24.04-mgmt-01 shutdown-guest
+just vm-power ubuntu_24.04-wrk-01 reboot-guest
+
+# Explicit bulk operation, restricted to VMs owned by ESXi 6.7:
+just vm-power-all powered-on --limit vm_esxi_6.7
+```
+
+Configured states are `powered-on`, `powered-off`, `shutdown-guest`,
+`reboot-guest`, `restarted`, and `suspended`. The inventory remains the authority;
+the recipes do not maintain a separate allowed-state list. These commands apply
+power operations immediately. `vm-power-all` without `--limit` targets all managed
+VMs across both ESXi hosts. VM names must belong to the managed inventory; adding
+a Packer variable file alone does not register a VM for power management.
+Use the single-VM command for targeted maintenance; these wrappers do not drain
+Kubernetes workloads or orchestrate rolling restarts.
+
 Preview supported changes with `--check`. If key validation fails, verify the public key:
 
 ```bash

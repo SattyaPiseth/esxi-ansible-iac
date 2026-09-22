@@ -58,3 +58,15 @@ packer-validate target *args:
 # Create VMs for an explicit ESXi target; optionally pass VM files or --start-at.
 packer-build target *args:
     ./packer/build-ubuntu-vms.sh --target "$@"
+
+# Show inventory-defined allowed power states without changing VM power.
+vm-power-states:
+    .venv/vmware/bin/ansible managed_vm_esxi -m ansible.builtin.debug -a var=esxi_allowed_power_states
+
+# Change one managed VM's power state: vm-power VM STATE [Ansible options].
+vm-power $vm $state *args:
+    @shift 2; .venv/vmware/bin/ansible-playbook playbooks/04-vm-power.yml "$@" --extra-vars "$(python3 -c 'import json, os; print(json.dumps({"scope": "single", "vm_power_name": os.environ["vm"], "vm_power_state": os.environ["state"]}))')"
+
+# Change all managed VMs; optionally restrict the owning ESXi host with --limit.
+vm-power-all $state *args:
+    @shift; .venv/vmware/bin/ansible-playbook playbooks/04-vm-power.yml "$@" --extra-vars "$(python3 -c 'import json, os; print(json.dumps({"scope": "all", "vm_power_state": os.environ["state"]}))')"
