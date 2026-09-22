@@ -241,6 +241,9 @@ Validates ESXi credentials and placement, gathers facts, lists VMs, verifies man
 - `just vm-power-states`, `just vm-power VM STATE`, and `just vm-power-all STATE`
   wrap existing power operations. Bulk scope is explicit; `--limit` selects owning
   ESXi inventory hosts. State validation and VM ownership remain in Ansible.
+- `just vm-delete VM CONFIRMATION` requires the exact VM name twice and fixes
+  scope to one VM; append `--check` for an Ansible preview. It delegates to
+  `05-vm-delete.yml` without changing the role's UUID or force controls.
 - `vm_delete_confirm`, `vm_delete_confirm_name`
 - Optional UUID and delete-all confirmations
 

@@ -283,6 +283,26 @@ ansible-playbook playbooks/04-vm-power.yml \
 ansible-playbook playbooks/99-guest-site.yml
 ```
 
+### VM deletion shortcut
+
+`just vm-delete VM CONFIRMATION` calls the existing deletion playbook. Repeat the
+exact managed VM name as confirmation; a missing or different name blocks execution.
+
+```bash
+# Preview through Ansible check mode (requires ESXi connectivity):
+just vm-delete ubuntu_24.04-wrk-01 ubuntu_24.04-wrk-01 --check
+
+# Delete the VM and its associated disks:
+just vm-delete ubuntu_24.04-wrk-01 ubuntu_24.04-wrk-01
+```
+
+The command is restricted to one managed VM. Existing ownership, unique-name,
+placement, optional UUID confirmation, and force settings remain in Ansible.
+Force deletion defaults to false. `--limit` refers to the owning ESXi inventory
+host, not the guest name. This does not drain Kubernetes workloads, remove cluster
+membership, or edit inventory; complete the appropriate decommissioning first.
+Check mode is a preview and cannot guarantee a later deletion will succeed.
+
 ### VM power shortcuts
 
 `just` delegates power operations to `04-vm-power.yml`, which validates

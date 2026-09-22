@@ -70,3 +70,8 @@ vm-power $vm $state *args:
 # Change all managed VMs; optionally restrict the owning ESXi host with --limit.
 vm-power-all $state *args:
     @shift; .venv/vmware/bin/ansible-playbook playbooks/04-vm-power.yml "$@" --extra-vars "$(python3 -c 'import json, os; print(json.dumps({"scope": "all", "vm_power_state": os.environ["state"]}))')"
+
+# Delete one managed VM; repeat its exact name to confirm. Add --check to preview.
+vm-delete $vm $confirm *args:
+    @test -n "$vm" && test "$vm" = "$confirm" || { echo "Deletion blocked: repeat the exact VM name as confirmation." >&2; exit 1; }
+    @shift 2; .venv/vmware/bin/ansible-playbook playbooks/05-vm-delete.yml "$@" --extra-vars "$(python3 -c 'import json, os; print(json.dumps({"scope": "single", "vm_delete_name": os.environ["vm"], "vm_delete_confirm": True, "vm_delete_confirm_name": os.environ["confirm"]}))')"
