@@ -15,6 +15,7 @@ Start with the [project README](../README.md) for installation and normal operat
 | ESXi and VM lifecycle | [Canonical playbooks](../README.md#canonical-playbooks) | [ESXi and VM lifecycle](feature-maintenance.md#4-esxi-validation-and-vm-lifecycle) |
 | Guest SSH/bootstrap | [Reconcile guests](../README.md#reconcile-guests) | [Guest access maintenance](feature-maintenance.md#5-guest-ssh-discovery-bootstrap-and-rotation) |
 | Guest network/offloads | [Reconcile guests](../README.md#reconcile-guests) | [Network and offload maintenance](feature-maintenance.md#6-guest-networking-and-nic-offloads) |
+| All `just` commands | [Complete recipe reference](just-commands.md) | [Wrapper maintenance](feature-maintenance.md) |
 | Platform `just` commands | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [Recipe targets and safety controls](feature-maintenance.md#platform-shortcuts) |
 | Kubernetes/Kubespray | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [Kubespray lifecycle](feature-maintenance.md#7-kubernetes-inventory-and-kubespray-lifecycle) |
 | kube-vip | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [Feature ownership](feature-maintenance.md#8-kube-vip-control-plane-endpoint) and [detailed procedure](kube-vip-per-node-interface.md) |

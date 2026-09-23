@@ -55,7 +55,7 @@ validate *args:
 packer-validate target *args:
     ./packer/build-ubuntu-vms.sh --target "$@" --validate-only
 
-# Create VMs for an explicit ESXi target; optionally pass VM files or --start-at.
+# Build selected VM files, or all target files if omitted; --force can destroy existing VMs.
 packer-build target *args:
     ./packer/build-ubuntu-vms.sh --target "$@"
 
@@ -75,6 +75,34 @@ vm-power-all $state *args:
 vm-delete $vm $confirm *args:
     @test -n "$vm" && test "$vm" = "$confirm" || { echo "Deletion blocked: repeat the exact VM name as confirmation." >&2; exit 1; }
     @shift 2; .venv/vmware/bin/ansible-playbook playbooks/05-vm-delete.yml "$@" --extra-vars "$(python3 -c 'import json, os; print(json.dumps({"scope": "single", "vm_delete_name": os.environ["vm"], "vm_delete_confirm": True, "vm_delete_confirm_name": os.environ["confirm"]}))')"
+
+# Validate ESXi inventory configuration without querying live VM state.
+esxi-validate *args:
+    .venv/vmware/bin/ansible-playbook playbooks/00-validate.yml "$@"
+
+# Validate configuration and read live ESXi facts.
+esxi-facts *args:
+    .venv/vmware/bin/ansible-playbook playbooks/01-esxi-facts.yml "$@"
+
+# List VMs on selected ESXi hosts.
+vm-list *args:
+    .venv/vmware/bin/ansible-playbook playbooks/02-vm-list.yml "$@"
+
+# Verify each managed VM exists exactly once on its owning ESXi host.
+vm-validate *args:
+    .venv/vmware/bin/ansible-playbook playbooks/03-vm-validate-managed.yml "$@"
+
+# Apply guest base configuration; requires working SSH and become access.
+guest-bootstrap *args:
+    .venv/vmware/bin/ansible-playbook playbooks/06-guest-bootstrap.yml "$@"
+
+# Configure guest networking serially; use --check and --limit first.
+guest-network *args:
+    .venv/vmware/bin/ansible-playbook playbooks/11-guest-network.yml "$@"
+
+# Reconcile managed Linux guests, including networking; optionally restrict with --limit.
+guest-prepare *args:
+    .venv/vmware/bin/ansible-playbook playbooks/99-guest-site.yml "$@"
 
 # Render Kubespray inventory from the Ansible inventory.
 kubernetes-inventory *args:

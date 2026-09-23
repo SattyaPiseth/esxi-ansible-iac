@@ -179,9 +179,35 @@ just packer-build esxi-8 packer/ubuntu-24.04/vms/esxi-8/wrk-01.pkrvars.hcl
 just packer-build esxi-8 --start-at packer/ubuntu-24.04/vms/esxi-8/wrk-02.pkrvars.hcl
 ```
 
+With no VM file arguments, a build selects every local VM variable file for the
+target in sorted order and stops at the first failure. It does not skip existing
+VMs. Successful earlier builds remain; `--start-at` only filters the file list.
+Select explicit files when adding VMs to an existing environment. Packer's
+`--force` can destroy existing VMs across the selected batch; it is distinct from
+Ansible's `vm_delete_enable_force` setting.
+
 Both Packer recipes require an explicit ESXi target and use the existing build
 wrapper. Validation does not create VMs. The commands below remain available for
 manual setup without `just`.
+
+### Just command reference
+
+See the [complete recipe reference](docs/just-commands.md) for command-to-playbook
+mappings, argument conventions, target groups, and workflows that use explicit
+playbook commands.
+
+Common inspection and guest commands:
+
+```bash
+just esxi-validate
+just esxi-facts
+just vm-list
+just vm-validate
+just guest-prepare --check --limit INVENTORY_HOST
+```
+
+`guest-bootstrap` applies only base guest configuration; `guest-network` applies
+only networking. `guest-prepare` runs the full guest workflow, including both.
 
 ### 1. Install dependencies
 
@@ -294,6 +320,24 @@ ansible-playbook playbooks/03-vm-validate-managed.yml
 ansible-playbook playbooks/04-vm-power.yml \
   -e scope=all -e vm_power_state=powered-on
 ansible-playbook playbooks/99-guest-site.yml
+```
+
+### Guest preparation shortcut
+
+`just guest-prepare` runs `playbooks/99-guest-site.yml` using the project virtual
+environment. It validates SSH authentication, prepares known hosts, waits for SSH,
+bootstraps guests, and configures guest networking. VMs must already be powered on
+and reachable. Without `--limit`, it targets all managed guests.
+
+```bash
+# Preview one inventory host first:
+just guest-prepare --check --limit INVENTORY_HOST
+
+# Apply to that host:
+just guest-prepare --limit INVENTORY_HOST
+
+# Reconcile all managed guests:
+just guest-prepare
 ```
 
 ### VM deletion shortcut

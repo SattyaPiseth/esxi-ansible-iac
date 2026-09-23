@@ -45,7 +45,8 @@ Apply these rules to every change:
 The root `justfile` wraps existing workflows and supports Ubuntu 24.04's `just`
 1.21. `just` lists commands; it does not provision infrastructure. See the
 [setup shortcuts](../README.md#shortcuts-with-just-ubuntu-2404-control-node) for the
-ordered operator workflow.
+ordered operator workflow and the [complete recipe reference](just-commands.md)
+for mappings and intentionally explicit playbook entry points.
 
 - `just bootstrap` runs `scripts/bootstrap-control-node.sh` using sudo for system
   packages. Ubuntu 22.04 adds the Deadsnakes PPA; 24.04 uses Ubuntu packages.
@@ -67,9 +68,12 @@ ordered operator workflow.
   and live host facts. All steps receive the same Ansible arguments, including
   `-i`, `--limit`, and `-e`. Empty host selections or execution-control options
   that skip the facts task do not verify connectivity. `00-validate.yml` remains
-  the configuration-only entry point.
+  the configuration-only entry point (also `just esxi-validate`).
 - `just packer-validate TARGET` and `just packer-build TARGET` delegate to the
   existing Packer wrapper, preserving explicit target selection and build options.
+  Omitting VM files selects all target files in sorted order; existing VMs are not
+  skipped, and the first failure stops the batch. `--force` can replace existing
+  VMs; prefer explicit file selection when adding VMs to a working environment.
 
 When changing these wrappers, verify compatibility with `just` 1.21, argument
 forwarding, and preservation of existing secrets. Run
@@ -343,7 +347,7 @@ Validates the managed SSH key pair, enrolls host keys, waits for SSH, bootstraps
 - `playbooks/12-guest-ssh-recover.yml`
 - `playbooks/17-ssh-key-rotate.yml`
 - `playbooks/99-guest-discover.yml`
-- `playbooks/99-guest-site.yml`
+- `playbooks/99-guest-site.yml` (also available as `just guest-prepare`; accepts Ansible options)
 
 ### Important controls
 
@@ -359,7 +363,7 @@ Validates the managed SSH key pair, enrolls host keys, waits for SSH, bootstraps
 ### Maintain and validate
 
 ```bash
-ansible-playbook playbooks/99-guest-site.yml --check --limit <inventory-host>
+just guest-prepare --check --limit <inventory-host>
 ansible <inventory-host> -m ansible.builtin.ping
 ```
 

@@ -13,6 +13,14 @@ import unittest
 class PlatformShortcutTests(unittest.TestCase):
     def test_routing_literal_arguments_and_failures(self):
         routes = {
+            'esxi-validate': '00-validate.yml',
+            'esxi-facts': '01-esxi-facts.yml',
+            'vm-list': '02-vm-list.yml',
+            'vm-validate': '03-vm-validate-managed.yml',
+            'guest-bootstrap': '06-guest-bootstrap.yml',
+            'guest-network': '11-guest-network.yml',
+
+            'guest-prepare': '99-guest-site.yml',
             'kubernetes-inventory': '07-kubespray-inventory.yml',
             'kubernetes-install': '08-kubespray-install.yml',
             'kubernetes-prepare': '10-kubernetes-node-prepare.yml',
