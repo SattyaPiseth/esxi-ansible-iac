@@ -143,8 +143,21 @@ in your password manager.
 just secrets-encrypt         # Encrypt inventory vaults and SSH keys; skip encrypted files
 just control-node --ask-become-pass  # Install system dependencies and VMware SDKs
 just syntax                  # Local site syntax check
-just validate                # Inventory graph, live ESXi validation, site syntax check
+just validate                # Selected ESXi hosts, site syntax, live ESXi facts
 ```
+
+`just validate` lists the selected ESXi hosts, checks site syntax, then runs
+`01-esxi-facts.yml` to validate configuration and read live ESXi facts. Inventory,
+limit, and extra-variable arguments are forwarded to every step, for example:
+
+```bash
+just validate -i inventories/production/hosts.yml --limit vm_esxi_8.0
+```
+
+This requires ESXi connectivity and valid credentials. An empty host selection
+runs no live checks; inspect the host list. Ansible execution-control options
+such as `--list-hosts`, `--syntax-check`, and task filters can suppress the live
+facts task, so those invocations do not establish connectivity.
 
 The recipes use `.venv/vmware/bin/` directly; no virtual-environment activation is
 needed. Run `just` as your regular operator account. The dependency recipe installs checksum-verified
@@ -364,6 +377,29 @@ ansible-playbook playbooks/13-kubespray-metallb.yml
 ansible-playbook playbooks/14-kubernetes-health.yml
 ```
 
+Equivalent `just` commands, after VM provisioning, guest networking, and SSH are ready:
+
+```bash
+just kubernetes-inventory
+just kubernetes-install
+just kubernetes-prepare
+just kubernetes-deploy -e '{"kubespray_control_enable_cluster_deploy": true}'
+just kubernetes-metallb
+just kubernetes-health
+```
+
+The recipes have no automatic `just` dependencies; each runs its named playbook.
+`kubernetes-deploy` renders inventory, prepares Kubespray tooling, and invokes deployment;
+it does not run the complete VM/guest workflow in `99-kubernetes-site.yml`.
+Inventory remains the source of node membership, sizing-related settings, and
+network configuration. The wrappers do not implement node scaling or rolling
+upgrades. An outer `--limit` selects this repository's play hosts, not the nodes
+in the nested Kubespray invocation; do not use it to assume a partial cluster
+rollout. Deployment `--check` is not an end-to-end Kubespray preview.
+`kubernetes-metallb` runs a tagged deployment and applies address pools immediately;
+its playbook enables the MetalLB deployment internally. `kubernetes-health` also
+refreshes the operator kubeconfig, so it is not a strictly read-only command.
+
 The enable flag prevents accidental deployment. Generated Kubespray inventory is derived data; change `inventories/production/` and regenerate it.
 
 For the complete workflow after VMs and credentials are ready:
@@ -391,6 +427,16 @@ ansible-playbook playbooks/16-longhorn-node-prepare.yml --check --limit ubuntu_2
 ansible-playbook playbooks/16-longhorn-node-prepare.yml --limit ubuntu_24.04-wrk-01
 ```
 
+The same storage workflow is available through `just`:
+
+```bash
+just longhorn-prepare --check --limit ubuntu_24.04-wrk-01
+just longhorn-prepare --limit ubuntu_24.04-wrk-01
+```
+
+The wrapper does not enable formatting or install Longhorn in Kubernetes. For a
+verified blank disk, use the explicit formatting override in the first-time guide.
+
 Longhorn workloads and application volumes should normally be reconciled by the GitOps repository. Avoid creating a second source of truth here.
 
 ## Bootstrap Argo CD v3
@@ -408,6 +454,18 @@ After the base cluster is healthy and `/opt/gitops-platform` is present:
 ansible-playbook playbooks/19-argocd-bootstrap.yml \
   -e argocd_bootstrap_enable=true
 ```
+
+Or use the guarded shortcut after verifying cluster health:
+
+```bash
+just argocd-bootstrap --check -e '{"argocd_bootstrap_enable": true}'
+just argocd-bootstrap -e '{"argocd_bootstrap_enable": true}'
+```
+
+Argo CD check mode validates local inputs and the configured version pin; live
+API checks, apply, and rollout verification happen only during normal execution.
+The shortcut preserves the GitOps source paths and version configuration; it
+does not enable Kubespray's Argo CD add-on.
 
 For a complete VM, Kubernetes, add-on, health, and GitOps bootstrap workflow:
 

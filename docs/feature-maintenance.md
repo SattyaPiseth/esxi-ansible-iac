@@ -62,7 +62,12 @@ ordered operator workflow.
   `scripts/local-secrets.py`. New local files are mode 0600; initialization never
   overwrites existing files. Password entry is interactive and hidden.
 - `just control-node` invokes the control-node prerequisite playbook after secrets setup.
-- `just syntax` checks site syntax; `just validate` also contacts ESXi.
+- `just syntax` checks site syntax. `just validate` lists selected ESXi hosts,
+  checks site syntax, then runs `01-esxi-facts.yml` for configuration assertions
+  and live host facts. All steps receive the same Ansible arguments, including
+  `-i`, `--limit`, and `-e`. Empty host selections or execution-control options
+  that skip the facts task do not verify connectivity. `00-validate.yml` remains
+  the configuration-only entry point.
 - `just packer-validate TARGET` and `just packer-build TARGET` delegate to the
   existing Packer wrapper, preserving explicit target selection and build options.
 
@@ -400,6 +405,39 @@ See [kube-vip per-node interface configuration](kube-vip-per-node-interface.md) 
 
 ## 7. Kubernetes inventory and Kubespray lifecycle
 
+### Platform shortcuts
+
+| Recipe | Canonical playbook | Selected inventory hosts |
+|---|---|---|
+| `kubernetes-inventory` | `07-kubespray-inventory.yml` | `control_node` |
+| `kubernetes-install` | `08-kubespray-install.yml` | `control_node` |
+| `kubernetes-prepare` | `10-kubernetes-node-prepare.yml` | `managed_vms` |
+| `kubernetes-deploy` | `09-kubespray-deploy.yml` | `control_node` |
+| `kubernetes-metallb` | `13-kubespray-metallb.yml` | `control_node` |
+| `kubernetes-health` | `14-kubernetes-health.yml` | `control_node` |
+| `longhorn-prepare` | `16-longhorn-node-prepare.yml` | `longhorn_nodes` |
+| `argocd-bootstrap` | `19-argocd-bootstrap.yml` | `control_node` |
+
+All recipes forward Ansible arguments literally without injecting enable flags.
+They have no automatic `just` dependencies. The underlying deployment playbook
+renders inventory and prepares Kubespray tooling before deployment; it does not
+provision VMs or perform the complete guest workflow. Prepare credentials, guest
+networking, and SSH first. Configure topology and deployment versions through the
+existing inventory and role variables rather than the recipes.
+
+Supply `kubespray_control_enable_cluster_deploy=true` for Kubernetes deployment
+and `argocd_bootstrap_enable=true` for Argo CD bootstrap. The MetalLB playbook
+itself enables a tagged deployment and applies pools without an additional
+operator enable flag. The health playbook refreshes the operator kubeconfig.
+Longhorn formatting remains a separate explicit opt-in for a verified blank disk.
+
+Outer `--limit` selects the hosts in the table, not the nodes targeted by nested
+Kubespray. In particular, limiting a control-node recipe to a worker can select no
+hosts and perform no work. Inspect `--list-hosts` before using limits. Deployment
+check mode is not an end-to-end simulation of Kubespray. Argo CD check mode only
+validates local inputs and its version pin. Use the documented Kubespray lifecycle
+for scaling or upgrades; these wrappers add no scaling or rolling-update logic.
+
 ### Purpose
 
 Renders Kubespray inputs, installs the pinned Kubespray version, prepares nodes, deploys or resets Kubernetes, and installs the operator kubeconfig.
@@ -590,6 +628,10 @@ Installs iSCSI, NFS, encryption, kernel-module, mount, and optional dedicated-di
 - `longhorn_node_prepare_has_data_disk`
 - `longhorn_node_prepare_enable_disk_format`
 - Optional multipath disablement
+
+`just longhorn-prepare [Ansible options]` invokes the canonical preparation
+playbook. Use `--check --limit <worker>` first; formatting stays disabled unless
+explicitly enabled for a verified blank disk.
 
 ### First-time Longhorn disk setup
 
@@ -801,6 +843,11 @@ one source of truth.
 - `argocd_bootstrap_gitops_dir` defaults to `/opt/gitops-platform`.
 - `argocd_bootstrap_expected_version` verifies the deployed Argo CD images.
 - The generated Kubespray `kubectl` and `admin.conf` are used explicitly.
+
+`just argocd-bootstrap [Ansible options]` delegates to `19-argocd-bootstrap.yml`.
+It preserves the explicit `argocd_bootstrap_enable=true` gate, GitOps manifest
+paths, expected version pin, and live readiness/rollout checks. In check mode,
+only local inputs and the version pin are validated.
 
 ### Use and validate
 

@@ -45,11 +45,11 @@ control-node *args:
 syntax *args:
     .venv/vmware/bin/ansible-playbook playbooks/99-site-run.yml --syntax-check "$@"
 
-# Display inventory, validate ESXi access, and check site syntax.
+# List selected ESXi hosts, check site syntax, and read live ESXi facts.
 validate *args:
-    .venv/vmware/bin/ansible-inventory --graph
-    .venv/vmware/bin/ansible-playbook playbooks/00-validate.yml "$@"
+    .venv/vmware/bin/ansible-playbook playbooks/01-esxi-facts.yml --list-hosts "$@"
     .venv/vmware/bin/ansible-playbook playbooks/99-site-run.yml --syntax-check "$@"
+    .venv/vmware/bin/ansible-playbook playbooks/01-esxi-facts.yml "$@"
 
 # Validate Packer inputs for esxi-6.7 or esxi-8 without creating VMs.
 packer-validate target *args:
@@ -75,3 +75,35 @@ vm-power-all $state *args:
 vm-delete $vm $confirm *args:
     @test -n "$vm" && test "$vm" = "$confirm" || { echo "Deletion blocked: repeat the exact VM name as confirmation." >&2; exit 1; }
     @shift 2; .venv/vmware/bin/ansible-playbook playbooks/05-vm-delete.yml "$@" --extra-vars "$(python3 -c 'import json, os; print(json.dumps({"scope": "single", "vm_delete_name": os.environ["vm"], "vm_delete_confirm": True, "vm_delete_confirm_name": os.environ["confirm"]}))')"
+
+# Render Kubespray inventory from the Ansible inventory.
+kubernetes-inventory *args:
+    .venv/vmware/bin/ansible-playbook playbooks/07-kubespray-inventory.yml "$@"
+
+# Install the pinned Kubespray tooling on the control node.
+kubernetes-install *args:
+    .venv/vmware/bin/ansible-playbook playbooks/08-kubespray-install.yml "$@"
+
+# Prepare Kubernetes guests; VMs, networking, and SSH must already be ready.
+kubernetes-prepare *args:
+    .venv/vmware/bin/ansible-playbook playbooks/10-kubernetes-node-prepare.yml "$@"
+
+# Deploy with Kubespray; requires explicit kubespray_control_enable_cluster_deploy=true.
+kubernetes-deploy *args:
+    .venv/vmware/bin/ansible-playbook playbooks/09-kubespray-deploy.yml "$@"
+
+# Reconcile MetalLB after Kubernetes deployment.
+kubernetes-metallb *args:
+    .venv/vmware/bin/ansible-playbook playbooks/13-kubespray-metallb.yml "$@"
+
+# Refresh operator kubeconfig and verify cluster health.
+kubernetes-health *args:
+    .venv/vmware/bin/ansible-playbook playbooks/14-kubernetes-health.yml "$@"
+
+# Prepare storage hosts; use --limit WORKER and --check first. Formatting stays opt-in.
+longhorn-prepare *args:
+    .venv/vmware/bin/ansible-playbook playbooks/16-longhorn-node-prepare.yml "$@"
+
+# Bootstrap pinned Argo CD v3 from GitOps; requires explicit argocd_bootstrap_enable=true.
+argocd-bootstrap *args:
+    .venv/vmware/bin/ansible-playbook playbooks/19-argocd-bootstrap.yml "$@"

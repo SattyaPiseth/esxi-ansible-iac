@@ -175,6 +175,10 @@ owner. A limit selecting only the other ESXi host fails with the owner named in
 the error. If no lifecycle hosts match at all, Ansible runs no tasks, so inspect
 `--list-hosts` before execution.
 
+The [platform `just` shortcuts](feature-maintenance.md#platform-shortcuts) delegate
+to these canonical playbooks. Their table records outer host scope and enable
+controls; an outer Ansible limit does not limit the nested Kubespray cluster run.
+
 ## Workflow graph
 
 Numbered playbooks are canonical. Roles contain reusable implementation;
