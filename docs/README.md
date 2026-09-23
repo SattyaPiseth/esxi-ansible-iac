@@ -19,6 +19,7 @@ Start with the [project README](../README.md) for installation and normal operat
 | Kubernetes/Kubespray | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [Kubespray lifecycle](feature-maintenance.md#7-kubernetes-inventory-and-kubespray-lifecycle) |
 | kube-vip | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [Feature ownership](feature-maintenance.md#8-kube-vip-control-plane-endpoint) and [detailed procedure](kube-vip-per-node-interface.md) |
 | MetalLB/add-ons | [Deploy Kubernetes](../README.md#deploy-kubernetes) | [MetalLB and add-ons](feature-maintenance.md#9-metallb-and-cluster-add-ons) |
+| Client setup on a new control node | `just kubernetes-client-setup` | [Restore local client artifacts](feature-maintenance.md#health-checks-from-another-checkout-or-control-node) |
 | Cluster health | [Troubleshooting](../README.md#troubleshooting) | [Health and kubeconfig](feature-maintenance.md#10-kubernetes-health-and-operator-kubeconfig) |
 | Longhorn hosts | [Prepare Longhorn nodes](../README.md#prepare-longhorn-nodes) | [Longhorn preparation](feature-maintenance.md#11-longhorn-node-preparation) |
 | Longhorn disk lifecycle | [First-time disk setup](feature-maintenance.md#first-time-longhorn-disk-setup) | [Troubleshooting](feature-maintenance.md#longhorn-disk-troubleshooting), [verification](feature-maintenance.md#longhorn-verification-checklist), and [replacement](feature-maintenance.md#longhorn-disk-replacement) |

@@ -371,6 +371,11 @@ Official references:
 - [community.vmware collection](https://docs.ansible.com/ansible/latest/collections/community/vmware/index.html)
 - [vmware.vmware collection](https://docs.ansible.com/ansible/latest/collections/vmware/vmware/index.html)
 
+Client restoration on a new control node uses the explicit-source
+[`kubernetes-client-setup` helper](feature-maintenance.md#health-checks-from-another-checkout-or-control-node).
+It installs local, Git-ignored artifacts without cluster deployment. Its local
+checks are separate from API health and client/server version-skew verification.
+
 ## Validation and extension
 
 CI and local pre-commit checks use the pinned requirements and validate the

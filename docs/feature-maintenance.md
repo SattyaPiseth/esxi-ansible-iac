@@ -256,6 +256,15 @@ Validates ESXi credentials and placement, gathers facts, lists VMs, verifies man
 - `just vm-delete VM CONFIRMATION` requires the exact VM name twice and fixes
   scope to one VM; append `--check` for an Ansible preview. It delegates to
   `05-vm-delete.yml` without changing the role's UUID or force controls.
+- `vm_delete_enable_force`: boolean, defaults to false. For powered-on VM deletion,
+  use `just vm-delete VM VM --check -e '{"vm_delete_enable_force": true}'`, review
+  the candidate, then omit `--check` to execute. Force may power off the VM and
+  does not provide graceful guest shutdown or Kubernetes decommissioning.
+  There is no recipe `--force` flag; `-e vm_delete_enable_force=true` supplies a
+  string and fails the role's boolean validation. Force retains name, ownership,
+  uniqueness, and optional UUID safeguards. See the
+  [deletion examples](../README.md#vm-deletion-shortcut) and official
+  [module force semantics](https://docs.ansible.com/projects/ansible/latest/collections/community/vmware/vmware_guest_module.html#parameter-force).
 - `vm_delete_confirm`, `vm_delete_confirm_name`
 - Optional UUID and delete-all confirmations
 
@@ -584,6 +593,7 @@ Installs a usable operator kubeconfig and validates nodes, API readiness, kube-v
 - `roles/control_plane_kubeconfig/`
 - `roles/kubernetes_health/`
 - `playbooks/14-kubernetes-health.yml`
+- `scripts/setup-kubernetes-client.py` and `just kubernetes-client-setup`
 
 ### Important controls
 
@@ -605,6 +615,103 @@ kubectl get events -A --sort-by=.lastTimestamp
 ```
 
 A failed health check is diagnostic evidence; it is not permission to restart or redeploy unrelated workloads.
+
+### Health checks from another checkout or control node
+
+The default client paths are `.generated/kubespray/production/artifacts/kubectl`
+and `admin.conf` (with the configured cluster name replacing `production`).
+`.generated/` is Git-ignored: cloning or pulling this repository does not restore
+these files. Missing files stop validation before cluster health is assessed.
+Do not redeploy Kubernetes solely to restore local client files.
+
+To restore from a trusted original control node, use the explicit source host
+and absolute artifacts directory (adjust both for your environment):
+
+```bash
+just kubernetes-client-setup sysadmin@172.16.6.20 \
+  /home/sysadmin/esxi-ansible-iac/.generated/kubespray/production/artifacts
+.generated/kubespray/production/artifacts/kubectl \
+  --kubeconfig .generated/kubespray/production/artifacts/admin.conf config current-context
+# After confirming the intended cluster:
+just kubernetes-health
+```
+
+Run this on the machine serving as Ansible's local control node. The helper uses
+noninteractive SSH authentication and requires a previously verified known-host entry;
+establish SSH access first. Password/passphrase prompts are disabled, so use an
+available SSH key or agent. Terminal allocation, agent/X11 forwarding, and port
+forwarding are disabled for transfers; host-key checking remains enabled. Optional
+`--identity /path/to/key` selects an SSH key, and `--cluster NAME` changes the local
+artifact directory to match `kubespray_cluster_name`; the remote path stays explicit.
+For a nondefault cluster, also select that cluster in inventory or pass
+`-e kubespray_cluster_name=NAME` to subsequent health checks.
+Only use a trusted source: the helper executes the downloaded client locally.
+
+The helper checks matching Linux OS/architecture, the executable header, client
+version execution, and the kubeconfig's current-context references. Every cluster
+and user entry is inspected, including inactive entries. Kubeconfig must be
+self-contained, without external certificate/key files or credential plugins.
+This restriction is specific to this restoration helper; Kubernetes itself
+supports external files and credential plugins.
+It stages both files privately, installs only after validation, and preserves any
+existing artifacts (including symlinks). To refresh credentials, securely back up
+and move both old files first, then rerun setup. It sets directory mode 0700,
+`kubectl` mode 0755, and `admin.conf` mode 0600. It does not print credentials,
+contact the Kubernetes API, modify `~/.kube/config`, or redeploy the cluster.
+Before health checks, verify the intended cluster using the installed client;
+local validation does not prove API reachability or credential validity.
+It also does not authenticate the binary independently of the trusted SSH source,
+verify certificate expiry, or check client/server version skew. Restore only from
+an operator-controlled source with the appropriate client release. Kubernetes
+supports `kubectl` within one minor version of every API server it contacts.
+After confirming the intended context, check client/server versions with:
+
+```bash
+.generated/kubespray/production/artifacts/kubectl \
+  --kubeconfig .generated/kubespray/production/artifacts/admin.conf version -o yaml
+```
+
+This command contacts the API. If the source artifacts grant cluster-admin
+access, transfer them only to an authorized administrative machine; restoration
+does not reduce their privileges. Do not use kubeconfig or downloaded executables
+from an untrusted source.
+
+Official references:
+
+- [Kubernetes kubeconfig trust, contexts, and file references](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/)
+- [Kubernetes client/server version skew policy](https://kubernetes.io/releases/version-skew-policy/)
+- [OpenSSH client configuration](https://man.openbsd.org/ssh_config)
+
+
+If this control node already has a compatible `kubectl` and a working kubeconfig
+for the intended cluster, verify their availability and selected cluster first:
+
+```bash
+command -v kubectl
+test -r "$HOME/.kube/config"
+kubectl --kubeconfig "$HOME/.kube/config" config current-context
+kubectl --kubeconfig "$HOME/.kube/config" get nodes
+```
+
+After those checks succeed, reuse the existing client paths:
+
+```bash
+just kubernetes-health \
+  -e "kubernetes_health_kubectl=$(readlink -e "$(command -v kubectl)")" \
+  -e "kubernetes_health_kubeconfig=$HOME/.kube/config"
+```
+
+Use the actual kubeconfig path if different. The role copies it to
+`kubernetes_health_operator_kubeconfig` (default `~/.kube/config`); set that
+variable to a separate destination if you need to preserve a different existing
+operator configuration. Paths refer to the Ansible `control_node` host.
+
+If no working client configuration exists here, securely transfer the deployment
+artifacts from the original control node, keeping `admin.conf` private (mode
+0600). Verify its API endpoint is reachable from the new machine and that the
+client binary matches its OS/architecture. Do not commit kubeconfig credentials.
+The earlier `control_plane_kubeconfig` role installs user configs on the remote
+control-plane nodes; it does not fetch those files to this checkout.
 
 ## 11. Longhorn node preparation
 

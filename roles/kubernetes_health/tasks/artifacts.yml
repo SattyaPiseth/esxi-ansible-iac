@@ -2,28 +2,27 @@
 - name: Check Kubernetes client artifacts
   ansible.builtin.stat:
     path: "{{ item }}"
+    follow: true
   loop:
     - "{{ kubernetes_health_kubectl }}"
     - "{{ kubernetes_health_kubeconfig }}"
   register: kubernetes_health_artifacts
 
-- name: Repair Kubernetes client artifacts when unusable
+- name: Validate Kubernetes client artifacts are usable
   ansible.builtin.assert:
     that:
       - item.stat.exists
       - item.stat.isreg
-      - >-
-        item.item.endswith('kubectl')
-        and item.stat.executable
-        or not item.item.endswith('kubectl')
-      - >-
-        item.item.endswith('admin.conf')
-        and item.stat.readable
-        or not item.item.endswith('admin.conf')
+      - item.item != kubernetes_health_kubectl or item.stat.executable
+      - item.item != kubernetes_health_kubeconfig or item.stat.readable
     fail_msg: >-
-      Required Kubespray artifacts are missing or unusable. Re-run
-      playbooks/09-kubespray-deploy.yml so Kubespray can regenerate the local
-      client artifacts cleanly.
+      Kubernetes client file is missing or unusable: {{ item.item }}.
+      Generated .generated/ artifacts are local to the deployment checkout and
+      are not restored by git pull. Supply absolute paths through
+      kubernetes_health_kubectl and kubernetes_health_kubeconfig for an existing
+      client and kubeconfig for this cluster, or securely restore the artifacts
+      from the original control node. Cluster redeployment is not required just
+      to restore client files.
   loop: "{{ kubernetes_health_artifacts.results }}"
   loop_control:
     label: "{{ item.item }}"

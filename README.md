@@ -309,6 +309,25 @@ just vm-delete ubuntu_24.04-wrk-01 ubuntu_24.04-wrk-01 --check
 just vm-delete ubuntu_24.04-wrk-01 ubuntu_24.04-wrk-01
 ```
 
+To delete a powered-on VM, explicitly enable the module's force option with a
+JSON boolean. Force can power off the VM for deletion; it is not a graceful guest
+shutdown. Complete workload decommissioning before using it.
+
+```bash
+# Preview forced deletion first:
+just vm-delete ubuntu_24.04-wrk-01 ubuntu_24.04-wrk-01 --check \
+  -e '{"vm_delete_enable_force": true}'
+
+# Execute only after reviewing the selected VM:
+just vm-delete ubuntu_24.04-wrk-01 ubuntu_24.04-wrk-01 \
+  -e '{"vm_delete_enable_force": true}'
+```
+
+There is no `--force` flag for this recipe. Use JSON as shown: the role requires a
+boolean and rejects the string produced by `-e vm_delete_enable_force=true`.
+Force does not bypass the exact-name confirmation or inventory ownership checks.
+See the official [VMware guest module force documentation](https://docs.ansible.com/projects/ansible/latest/collections/community/vmware/vmware_guest_module.html#parameter-force).
+
 The command is restricted to one managed VM. Existing ownership, unique-name,
 placement, optional UUID confirmation, and force settings remain in Ansible.
 Force deletion defaults to false. `--limit` refers to the owning ESXi inventory
@@ -399,6 +418,12 @@ rollout. Deployment `--check` is not an end-to-end Kubespray preview.
 `kubernetes-metallb` runs a tagged deployment and applies address pools immediately;
 its playbook enables the MetalLB deployment internally. `kubernetes-health` also
 refreshes the operator kubeconfig, so it is not a strictly read-only command.
+A new control machine can restore artifacts with
+`just kubernetes-client-setup SOURCE_HOST /absolute/remote/artifacts`.
+The source must be trusted and its SSH host key verified; existing artifacts are
+preserved. Setup validates local files, not live API access or client/server
+version compatibility. A new checkout needs local client artifacts or explicit existing client paths; see
+[health checks from another control node](docs/feature-maintenance.md#health-checks-from-another-checkout-or-control-node).
 
 The enable flag prevents accidental deployment. Generated Kubespray inventory is derived data; change `inventories/production/` and regenerate it.
 
